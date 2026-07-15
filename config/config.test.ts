@@ -8,6 +8,7 @@ describe('Luna configuration', () => {
     expect(MODELS.chat.model).toBe('deepseek-v4-flash')
     expect(MODELS.chat.endpoint).toContain('/chat/completions')
     expect(MODELS.speech.model).toBe('speech-2.8-turbo')
+    expect(MODELS.speech.baseUrl).toBe('https://api.minimaxi.com')
     expect(MODELS.speech.voicesEndpoint).toContain('/get_voice')
   })
 

@@ -11,4 +11,10 @@ describe('SSE streaming', () => {
   it('formats browser SSE events', () => {
     expect(sseEvent('delta', { content: '你好' })).toBe('event: delta\ndata: {"content":"你好"}\n\n')
   })
+  it('parses CRLF-delimited upstream events', async () => {
+    const source = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"成功"}}]}\r\n\r\ndata: [DONE]\r\n\r\n')); controller.close() } })
+    const chunks: string[] = []
+    for await (const value of parseDeepSeekStream(source)) chunks.push(value)
+    expect(chunks).toEqual(['成功'])
+  })
 })

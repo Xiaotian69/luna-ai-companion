@@ -11,7 +11,8 @@ const valid = {
 
 describe('parseEnv', () => {
   it('rejects a missing app password', () => {
-    const { APP_PASSWORD: _removed, ...input } = valid
+    const input: Record<string, unknown> = { ...valid }
+    delete input.APP_PASSWORD
     expect(() => parseEnv(input)).toThrow()
   })
 

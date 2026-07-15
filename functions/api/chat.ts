@@ -30,10 +30,24 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   const conversations = new ConversationRepository(env.DB)
   const messages = new MessageRepository(env.DB)
   const conversation = await new ConversationService(conversations, messages).ensure(input.conversationId, input.content)
-  const [history, relationship, memories, summary] = await Promise.all([messages.recent(conversation.id, LIMITS.recentMessageCount), new RelationshipRepository(env.DB).get(), new MemoryRepository(env.DB).list(true), new SummaryRepository(env.DB).get(conversation.id)])
-  const context = assembleContext({ relationship, memories, summary: summary?.summary ?? null, messages: history, currentInput: input.content })
+  const [storedHistory, relationship, memories, summary] = await Promise.all([messages.recent(conversation.id, LIMITS.recentMessageCount), new RelationshipRepository(env.DB).get(), new MemoryRepository(env.DB).list(true), new SummaryRepository(env.DB).get(conversation.id)])
+  let effectiveContent = input.content
+  let history = storedHistory
   const now = new Date().toISOString()
-  const userMessage = await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'user', content: input.content, tokenEstimate: estimateTokens(input.content), now })
+  let userMessage
+  if (input.regenerate) {
+    const userIndex = storedHistory.map((message) => message.role).lastIndexOf('user')
+    const previousUser = storedHistory[userIndex]
+    if (!previousUser) return apiError(400, 'NOTHING_TO_REGENERATE', '没有可重新生成的消息')
+    effectiveContent = previousUser.content
+    const previousAssistant = [...storedHistory.slice(userIndex + 1)].reverse().find((message) => message.role === 'assistant')
+    if (previousAssistant) await messages.delete(previousAssistant.id, conversation.id)
+    history = storedHistory.slice(0, userIndex)
+    userMessage = previousUser
+  } else {
+    userMessage = await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'user', content: effectiveContent, tokenEstimate: estimateTokens(effectiveContent), now })
+  }
+  const context = assembleContext({ relationship, memories, summary: summary?.summary ?? null, messages: history, currentInput: effectiveContent })
   await conversations.touch(conversation.id, now)
   const encoder = new TextEncoder()
   const stream = new TransformStream<Uint8Array, Uint8Array>()
@@ -45,14 +59,15 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
       const chunks = await new DeepSeekClient(env.DEEPSEEK_API_KEY).stream(context, request.signal)
       for await (const chunk of chunks) { content += chunk; await writer.write(encoder.encode(sseEvent('delta', { content: chunk }))) }
       const assistant = await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'assistant', content, tokenEstimate: estimateTokens(content), now: new Date().toISOString() })
-      await usage.increment(date, { chatCalls: 1, ttsCalls: 0, inputTokens: estimateTokens(input.content), outputTokens: estimateTokens(content) })
+      await usage.increment(date, { chatCalls: 1, ttsCalls: 0, inputTokens: estimateTokens(effectiveContent), outputTokens: estimateTokens(content) })
       const backgroundClient = new DeepSeekClient(env.DEEPSEEK_API_KEY)
       waitUntil(Promise.allSettled([
         new SummarizationService(backgroundClient, messages, new SummaryRepository(env.DB)).run(conversation.id),
-        new MemoryExtractionService(backgroundClient, new MemoryRepository(env.DB)).extract({ conversationId: conversation.id, sourceMessageId: userMessage.id, userContent: input.content, assistantContent: content }),
+        new MemoryExtractionService(backgroundClient, new MemoryRepository(env.DB)).extract({ conversationId: conversation.id, sourceMessageId: userMessage.id, userContent: effectiveContent, assistantContent: content }),
       ]).then(() => undefined))
       await writer.write(encoder.encode(sseEvent('done', { messageId: assistant.id })))
     } catch (error) {
+      console.error('chat_stream_failed', error instanceof Error ? error.message : 'unknown')
       if (content) await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'assistant', content, tokenEstimate: estimateTokens(content), now: new Date().toISOString(), status: 'interrupted' })
       try { await writer.write(encoder.encode(sseEvent('error', { code: request.signal.aborted ? 'ABORTED' : 'UPSTREAM_ERROR', message: request.signal.aborted ? '已停止生成' : 'Luna 暂时没有回应，请重试' }))) } catch { /* client disconnected */ }
     } finally { try { await writer.close() } catch { /* stream already closed */ } }

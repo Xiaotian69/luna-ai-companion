@@ -8,7 +8,7 @@ export const MODELS = {
     stream: true,
   },
   speech: {
-    baseUrl: 'https://api.minimax.io',
+    baseUrl: 'https://api.minimaxi.com',
     endpoint: '/v1/t2a_v2',
     voicesEndpoint: '/v1/get_voice',
     model: 'speech-2.8-turbo',

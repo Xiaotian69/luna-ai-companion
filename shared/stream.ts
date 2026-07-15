@@ -8,6 +8,7 @@ export async function* parseDeepSeekStream(stream: ReadableStream<Uint8Array>): 
     while (true) {
       const { done, value } = await reader.read()
       buffer += decoder.decode(value, { stream: !done })
+      buffer = buffer.replace(/\r\n/g, '\n')
       const events = buffer.split('\n\n')
       buffer = events.pop() ?? ''
       for (const event of events) {
