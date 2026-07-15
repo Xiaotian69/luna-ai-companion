@@ -1,0 +1,11 @@
+export interface Bindings {
+  DB: D1Database
+  DEEPSEEK_API_KEY: string
+  MINIMAX_API_KEY: string
+  APP_PASSWORD: string
+  SESSION_SECRET: string
+  ENVIRONMENT?: 'development' | 'test' | 'production'
+}
+
+export type RequestData = Record<string, unknown> & { sessionHash?: string; requestId?: string }
+export type LunaPagesFunction = PagesFunction<Bindings, string, RequestData>
