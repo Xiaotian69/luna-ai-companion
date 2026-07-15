@@ -5,6 +5,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+work/
 
 # Local secrets and environment files
 .dev.vars
