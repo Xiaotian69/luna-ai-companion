@@ -1,0 +1,5 @@
+DEEPSEEK_API_KEY=replace-with-deepseek-key
+MINIMAX_API_KEY=replace-with-minimax-key
+APP_PASSWORD=replace-with-a-strong-password
+SESSION_SECRET=replace-with-at-least-32-random-characters
+ENVIRONMENT=development
