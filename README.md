@@ -1,26 +1,57 @@
-# Luna
+# Luna AI Companion
 
-Luna 是一个单用户中文 AI 陪伴聊天网页。它使用 React + Vite + TypeScript、Cloudflare Pages Functions 与 D1，文字模型为 DeepSeek `deepseek-v4-flash`，语音模型为 MiniMax `speech-2.8-turbo`。
+Luna 是一个可自托管、单用户、中文优先的 AI 伴侣网页。Luna 只是默认示例：使用者可以在网页内自由设置名字、头像、关系、称呼、性格、说话风格和相处边界。
 
-## 已实现
+项目当前支持 Cloudflare + DeepSeek + MiniMax。无需商业 Token 的本地开放权重模型模式正在按 [ROADMAP.md](./ROADMAP.md) 分阶段实现。
 
-- DeepSeek SSE 流式聊天、停止与重新生成
-- 新建/查看历史对话、复制与删除消息、刷新后持久化
-- D1 上下文摘要、长期记忆提取和记忆管理
-- MiniMax 动态系统音色、试听、参数设置、自动朗读和浏览器音频缓存
-- 单用户密码、签名 HttpOnly/Secure/SameSite Cookie、D1 会话、请求限流和每日配额
-- B 方案极简图标栏、历史抽屉、深浅主题、移动端安全区
-- 严格 TypeScript、Zod 输入校验、Vitest/Miniflare、Playwright 和密钥扫描
+## 功能特色
 
-## 本地开发
+### 自定义 AI 伴侣
 
-需要 Node.js 24+。安装依赖：
+- 默认示例名为 Luna，可自由改名。
+- 支持女友、男友、朋友和自定义关系。
+- 支持头像 URL、用户称呼、性格、说话风格与相处边界。
+- 角色档案保存在 D1，并在每轮聊天中参与上下文组装。
+- 保持 AI 身份透明，不编造现实身体、经历或行动。
 
-```bash
-npm install
+### 长期记忆
+
+- 从对话中提取未来仍有价值的稳定记忆。
+- 根据当前话题召回相关记忆，而不是把全部历史塞给模型。
+- 长对话自动生成结构化摘要，保留事件、情绪、回应和待续事项。
+- 记忆可以查看、编辑、启用、停用、删除和全部清空。
+- 自动过滤密码、验证码、证件号、银行卡等不必要敏感信息。
+- 关系状态记录熟悉度、当前情绪和近期事件。
+
+后续阶段会增加记忆分类、冲突更新、召回透明度、敏感内容确认和本地备份恢复。
+
+### 对话与语音
+
+- DeepSeek SSE 流式回复、停止生成和重新生成。
+- 对话历史、消息持久化、复制、朗读和删除。
+- MiniMax 动态音色、试听、语速、音高、音量与自动朗读。
+- 相同文本和语音参数使用浏览器缓存，减少重复费用。
+
+### 安全与质量
+
+- 模型请求只从服务端发起，API Key 不进入浏览器构建。
+- 单用户密码、签名 `HttpOnly; Secure; SameSite=Strict` Cookie 和 D1 会话。
+- 登录、聊天和语音分别限流，并有每日配额。
+- 严格 TypeScript、Zod、Vitest、Miniflare、Playwright 和仓库密钥扫描。
+- 公开仓库不包含聊天数据库、模型权重、音色文件或真实密钥。
+
+## 快速开始
+
+要求 Node.js 24+。
+
+```powershell
+npm ci
+Copy-Item .dev.vars.example .dev.vars
+npm run db:migrate:local
+npm run dev:full
 ```
 
-复制 `.dev.vars.example` 为 `.dev.vars`，设置：
+编辑 `.dev.vars`，填写你自己的值：
 
 ```dotenv
 DEEPSEEK_API_KEY=你的 DeepSeek Key
@@ -30,25 +61,16 @@ SESSION_SECRET=至少 32 位随机字符串
 ENVIRONMENT=development
 ```
 
-`.dev.vars`、`.env`、私钥文件均已被 `.gitignore` 排除。不要把真实值复制到 `VITE_*` 变量：任何 `VITE_*` 值都会进入浏览器包。
+打开 Wrangler 输出的地址，通常为 [http://127.0.0.1:8788](http://127.0.0.1:8788)，使用 `APP_PASSWORD` 登录。
 
-创建本地 D1 并迁移：
+`.dev.vars` 已被 Git 忽略。不要把模型密钥放进任何 `VITE_*` 变量，因为 `VITE_*` 会进入浏览器包。
 
-```bash
+## 常用命令
+
+```powershell
+npm run dev             # 仅启动 Vite 前端
+npm run dev:full        # 构建并启动本地 Pages Functions 与 D1
 npm run db:migrate:local
-```
-
-构建并同时启动 Pages 静态资源与 Functions：
-
-```bash
-npm run dev:full
-```
-
-打开 Wrangler 输出的地址（通常为 `http://localhost:8788`），使用 `.dev.vars` 中的 `APP_PASSWORD` 登录。单独运行 `npm run dev` 只启动前端；此时 API 会代理到 `http://localhost:8788`。
-
-## 质量检查
-
-```bash
 npm run check:secrets
 npm run typecheck
 npm run lint
@@ -57,55 +79,57 @@ npm run build
 npm run test:e2e
 ```
 
-测试不会调用付费 API。真实 API 烟雾测试应只使用短消息和短试听句，避免意外费用。
-
-## 创建 Cloudflare D1
-
-登录 Wrangler 后创建数据库：
-
-```bash
-npx wrangler login
-npx wrangler d1 create luna-db
-```
-
-把返回的 `database_id` 写入 `wrangler.toml`，然后执行生产迁移：
-
-```bash
-npx wrangler d1 migrations apply luna-db --remote
-```
-
-数据库包含 `conversations`、`messages`、`conversation_summaries`、`memories`、`relationship_state`、`sessions`、`usage_daily` 和 `rate_limits`。建议定期用 Wrangler 导出 D1，并在高风险变更前备份。
+测试不会调用付费 API。真实 API 烟雾测试应使用短消息和短试听句。
 
 ## 部署到 Cloudflare Pages
 
-1. 在 Cloudflare Dashboard 创建 Pages 项目并连接 GitHub 仓库。
-2. 构建命令设置为 `npm run build`，输出目录设置为 `dist`。
-3. 为 Pages 项目绑定 D1，变量名必须是 `DB`，数据库选择 `luna-db`。
-4. 在 Pages 的 Settings → Variables and Secrets 中添加四个加密 Secret：`DEEPSEEK_API_KEY`、`MINIMAX_API_KEY`、`APP_PASSWORD`、`SESSION_SECRET`。
-5. 不要创建任何 `VITE_DEEPSEEK_*` 或 `VITE_MINIMAX_*` 变量。
-6. 首次部署前执行远程 D1 迁移；随后推送 `main` 即由 Pages Git 集成自动部署。
+1. 创建 D1：
 
-GitHub Actions 只运行静态检查、测试与构建，不需要也不应配置模型 Key。Cloudflare Pages Git 集成负责线上部署。
+   ```powershell
+   npx wrangler login
+   npx wrangler d1 create luna-db
+   ```
 
-## 配置位置
+2. 将返回的 `database_id` 写入 `wrangler.toml`。
+3. 应用远程迁移：
 
-- `config/models.ts`：模型、API 地址与主要参数
-- `config/limits.ts`：上下文阈值、输入限制、速率与每日配额
-- `config/persona.ts`：Luna 的完整可编辑人物设定
-- `migrations/0001_initial.sql`：D1 初始迁移
+   ```powershell
+   npx wrangler d1 migrations apply luna-db --remote
+   ```
 
-## 安全与费用
+4. 在 Cloudflare Pages 中将构建命令设为 `npm run build`，输出目录设为 `dist`。
+5. 绑定变量名为 `DB` 的 D1 数据库。
+6. 在加密 Secrets 中配置：
 
-- 所有模型请求仅由 Pages Functions 发起；浏览器包不包含 API Key。
-- Cookie 设置 `HttpOnly; Secure; SameSite=Strict`，会话只以 SHA-256 哈希写入 D1。
-- 登录、聊天和 TTS 分别限流；聊天和语音有每日调用上限。
-- 自动朗读关闭时不会自动请求 TTS；相同文本与参数使用浏览器 Cache API。
-- 若 Key 曾粘贴到公开位置或提交历史，应立即在 DeepSeek/MiniMax 控制台轮换，而不只是删除文件。
+   - `DEEPSEEK_API_KEY`
+   - `MINIMAX_API_KEY`
+   - `APP_PASSWORD`
+   - `SESSION_SECRET`
 
-## 官方接口参考
+7. 不要创建 `VITE_DEEPSEEK_*` 或 `VITE_MINIMAX_*`。
 
-- [DeepSeek Chat Completion](https://api-docs.deepseek.com/api/create-chat-completion)
-- [MiniMax 中国区 T2A HTTP](https://platform.minimaxi.com/docs/api-reference/speech-t2a-http)
-- [MiniMax 中国区 Get Voice](https://platform.minimaxi.com/docs/api-reference/voice-management-get)
+## API Key 与官方链接
+
+仓库只提供变量名和申请入口，不提供项目所有者的密钥：
+
+- [DeepSeek 开放平台](https://platform.deepseek.com/)
+- [DeepSeek Chat Completion 文档](https://api-docs.deepseek.com/api/create-chat-completion)
+- [MiniMax 开放平台](https://platform.minimaxi.com/)
+- [MiniMax T2A 文档](https://platform.minimaxi.com/docs/api-reference/speech-t2a-http)
+- [MiniMax 音色管理文档](https://platform.minimaxi.com/docs/api-reference/voice-management-get)
 - [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/)
+
+## 项目结构
+
+- `src/`：React 前端、聊天、伴侣、记忆、语音和用量页面。
+- `functions/api/`：Cloudflare Pages Functions API。
+- `functions/_lib/`：模型客户端、仓储和智能体服务。
+- `shared/`：前后端共享 Schema 与类型。
+- `migrations/`：D1 数据库迁移。
+- `config/`：模型、限制与基础人格安全规则。
+- `docs/superpowers/`：已确认设计与实施计划。
+
+## 许可
+
+原创代码使用 [MIT License](./LICENSE)。依赖、模型、音色和托管服务保留各自许可证，详见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。

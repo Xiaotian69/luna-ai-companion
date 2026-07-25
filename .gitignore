@@ -11,11 +11,23 @@ work/
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
+!.dev.vars.*.example
 .env
 .env.*
 !.env.example
 *.pem
 *.key
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.gguf
+*.safetensors
+*.onnx
+*.wav
+*.mp3
+models/
+voices/
 
 # Local tooling and editor state
 .superpowers/
