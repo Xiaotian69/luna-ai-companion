@@ -76,7 +76,7 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
     } catch (error) {
       console.error('chat_stream_failed', error instanceof Error ? error.message : 'unknown')
       if (content) await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'assistant', content, tokenEstimate: estimateTokens(content), now: new Date().toISOString(), status: 'interrupted' })
-      try { await writer.write(encoder.encode(sseEvent('error', { code: request.signal.aborted ? 'ABORTED' : 'UPSTREAM_ERROR', message: request.signal.aborted ? '已停止生成' : 'Luna 暂时没有回应，请重试' }))) } catch { /* client disconnected */ }
+      try { await writer.write(encoder.encode(sseEvent('error', { code: request.signal.aborted ? 'ABORTED' : 'UPSTREAM_ERROR', message: request.signal.aborted ? '已停止生成' : `${companion.displayName} 暂时没有回应，请重试` }))) } catch { /* client disconnected */ }
     } finally { try { await writer.close() } catch { /* stream already closed */ } }
   })()
   waitUntil(pump)

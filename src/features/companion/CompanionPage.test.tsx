@@ -1,12 +1,13 @@
 import userEvent from '@testing-library/user-event'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CompanionProvider } from './CompanionProvider'
 import { CompanionPage } from './CompanionPage'
 
 const companion = {
   displayName: 'Luna',
   avatarUrl: '',
-  relationshipPreset: 'friend',
+  relationshipPreset: 'friend' as const,
   customRelationship: '',
   userAddress: '',
   personality: '温柔、聪明、自然',
@@ -24,7 +25,7 @@ describe('CompanionPage', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ companion }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ companion: { ...companion, displayName: 'Nova' } }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
-    render(<CompanionPage />)
+    render(<CompanionProvider><CompanionPage /></CompanionProvider>)
 
     const name = await screen.findByLabelText('名字')
     expect(name).toHaveValue('Luna')
@@ -43,5 +44,28 @@ describe('CompanionPage', () => {
       body: expect.stringContaining('"displayName":"Nova"'),
     }))
     expect(await screen.findByText('已保存')).toBeInTheDocument()
+  })
+
+  it('does not offer a default profile for saving when loading fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('网络不可用')))
+
+    render(<CompanionProvider><CompanionPage /></CompanionProvider>)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('网络不可用')
+    expect(screen.queryByLabelText('名字')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '保存伴侣设定' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument()
+  })
+
+  it('falls back to the name initial when a remote avatar fails', () => {
+    render(<CompanionProvider initialProfile={{ ...companion, avatarUrl: 'https://example.test/missing.png' }}><CompanionPage /></CompanionProvider>)
+    const preview = screen.getByLabelText('头像预览')
+    const image = preview.querySelector('img')
+    expect(image).not.toBeNull()
+
+    fireEvent.error(image!)
+
+    expect(preview.querySelector('img')).toBeNull()
+    expect(preview).toHaveTextContent('L')
   })
 })

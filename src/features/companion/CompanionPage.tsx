@@ -1,12 +1,11 @@
-import { Save } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { RefreshCw, Save } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import {
-  DEFAULT_COMPANION_PROFILE,
   type CompanionProfile,
   type CompanionProfileInput,
   type RelationshipPreset,
 } from '../../../shared/companion'
-import { api } from '../../lib/api'
+import { useCompanion } from './companion-context'
 
 const relationshipOptions: Array<{ value: RelationshipPreset; label: string }> = [
   { value: 'girlfriend', label: '女友' },
@@ -16,34 +15,7 @@ const relationshipOptions: Array<{ value: RelationshipPreset; label: string }> =
 ]
 
 export function CompanionPage() {
-  const [profile, setProfile] = useState<CompanionProfileInput>(DEFAULT_COMPANION_PROFILE)
-  const [status, setStatus] = useState<'loading' | 'ready' | 'saving' | 'saved'>('loading')
-  const [error, setError] = useState('')
-  const initial = useMemo(() => profile.displayName.trim().slice(0, 1).toUpperCase() || 'AI', [profile.displayName])
-
-  useEffect(() => {
-    api<{ companion: CompanionProfile }>('/api/companion')
-      .then(({ companion }) => { setProfile(companion); setStatus('ready') })
-      .catch((value) => { setError(value instanceof Error ? value.message : '伴侣设定暂时不可用'); setStatus('ready') })
-  }, [])
-
-  const update = <Key extends keyof CompanionProfileInput>(key: Key, value: CompanionProfileInput[Key]) => {
-    setProfile((current) => ({ ...current, [key]: value }))
-    if (status === 'saved') setStatus('ready')
-  }
-
-  const save = async () => {
-    setStatus('saving')
-    setError('')
-    try {
-      const result = await api<{ companion: CompanionProfile }>('/api/companion', { method: 'PUT', body: JSON.stringify(profile) })
-      setProfile(result.companion)
-      setStatus('saved')
-    } catch (value) {
-      setError(value instanceof Error ? value.message : '保存失败')
-      setStatus('ready')
-    }
-  }
+  const { profile, loadState, loadError, reload, save } = useCompanion()
 
   return <section className="management-page">
     <header>
@@ -51,13 +23,49 @@ export function CompanionPage() {
       <h1>我的 AI 伴侣</h1>
       <p>保留 Luna 作为默认示例，也可以自由修改名字、关系和相处方式。声音仍在语音设置中单独选择。</p>
     </header>
-    <div className="settings-card companion-card">
+    {loadState === 'loading' && <div className="settings-card"><p className="muted">正在读取伴侣设定…</p></div>}
+    {loadState === 'error' && <div className="settings-card" role="alert">
+      <p className="form-error">{loadError}</p>
+      <p className="muted">为避免覆盖已有档案，成功读取前不会显示或保存默认值。</p>
+      <button onClick={() => void reload()}><RefreshCw size={16} />重试</button>
+    </div>}
+    {loadState === 'ready' && profile && <CompanionEditor key={profile.createdAt} profile={profile} onSave={save} />}
+  </section>
+}
+
+function CompanionEditor({ profile: storedProfile, onSave }: { profile: CompanionProfile; onSave: (input: CompanionProfileInput) => Promise<CompanionProfile> }) {
+  const [profile, setProfile] = useState<CompanionProfileInput>(storedProfile)
+  const [status, setStatus] = useState<'ready' | 'saving' | 'saved'>('ready')
+  const [error, setError] = useState('')
+  const [avatarFailed, setAvatarFailed] = useState(false)
+  const initial = useMemo(() => profile.displayName.trim().slice(0, 1).toUpperCase() || 'AI', [profile.displayName])
+
+  const update = <Key extends keyof CompanionProfileInput>(key: Key, value: CompanionProfileInput[Key]) => {
+    setProfile((current) => ({ ...current, [key]: value }))
+    if (key === 'avatarUrl') setAvatarFailed(false)
+    if (status === 'saved') setStatus('ready')
+  }
+
+  const save = async () => {
+    setStatus('saving')
+    setError('')
+    try {
+      const companion = await onSave(profile)
+      setProfile(companion)
+      setStatus('saved')
+    } catch (value) {
+      setError(value instanceof Error ? value.message : '保存失败')
+      setStatus('ready')
+    }
+  }
+
+  return <div className="settings-card companion-card">
       <div className="companion-identity">
         <div className="companion-avatar" aria-label="头像预览">
-          {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" /> : <span>{initial}</span>}
+          {profile.avatarUrl && !avatarFailed ? <img src={profile.avatarUrl} alt="" onError={() => setAvatarFailed(true)} /> : <span>{initial}</span>}
         </div>
         <div className="companion-fields">
-          <label>名字<input className="field" value={profile.displayName} onChange={(event) => update('displayName', event.target.value)} disabled={status === 'loading'} /></label>
+          <label>名字<input className="field" value={profile.displayName} onChange={(event) => update('displayName', event.target.value)} /></label>
           <label>头像 URL<input className="field" value={profile.avatarUrl} onChange={(event) => update('avatarUrl', event.target.value)} placeholder="https://example.com/avatar.png" /></label>
         </div>
       </div>
@@ -76,9 +84,8 @@ export function CompanionPage() {
       </details>
       {error && <p className="form-error">{error}</p>}
       <div className="row-actions">
-        <button className="primary" onClick={() => void save()} disabled={status === 'loading' || status === 'saving'}><Save size={16} />{status === 'saving' ? '保存中…' : '保存伴侣设定'}</button>
+        <button className="primary" onClick={() => void save()} disabled={status === 'saving'}><Save size={16} />{status === 'saving' ? '保存中…' : '保存伴侣设定'}</button>
         {status === 'saved' && <span className="save-state">已保存</span>}
       </div>
     </div>
-  </section>
 }

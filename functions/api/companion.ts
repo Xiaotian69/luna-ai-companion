@@ -8,11 +8,12 @@ export const onRequestGet: LunaPagesFunction = async ({ env }) => {
 }
 
 export const onRequestPut: LunaPagesFunction = async ({ request, env }) => {
+  let input
   try {
-    const input = companionProfileInputSchema.parse(await readJson(request))
-    const companion = await new CompanionProfileRepository(env.DB).update(input, new Date().toISOString())
-    return json({ companion })
+    input = companionProfileInputSchema.parse(await readJson(request))
   } catch {
     return apiError(400, 'INVALID_COMPANION_PROFILE', '伴侣设定无效')
   }
+  const companion = await new CompanionProfileRepository(env.DB).update(input, new Date().toISOString())
+  return json({ companion })
 }
