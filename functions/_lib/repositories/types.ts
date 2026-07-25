@@ -1,3 +1,5 @@
+import type { CompanionProfile } from '../../../shared/companion'
+
 export type MessageRole = 'user' | 'assistant' | 'system'
 
 export interface Conversation { id: string; title: string; createdAt: string; updatedAt: string }
@@ -6,5 +8,6 @@ export interface ConversationSummary { id: string; conversationId: string; summa
 export interface Memory { id: string; memoryType: string; content: string; importance: number; sourceConversationId: string | null; sourceMessageId: string | null; createdAt: string; updatedAt: string; isActive: boolean }
 export interface RelationshipState { familiarity: number; currentMood: string; recentEvents: string[]; updatedAt: string }
 export interface DailyUsage { usageDate: string; chatCalls: number; ttsCalls: number; inputTokens: number; outputTokens: number }
+export type { CompanionProfile }
 
 export function rows<T>(result: D1Result<T>): T[] { return result.results ?? [] }
