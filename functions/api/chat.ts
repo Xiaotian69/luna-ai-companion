@@ -4,6 +4,7 @@ import { sseEvent } from '../../shared/stream'
 import { DeepSeekClient } from '../_lib/clients/deepseek'
 import { apiError, readJson } from '../_lib/http'
 import { ConversationRepository } from '../_lib/repositories/conversations'
+import { CompanionProfileRepository } from '../_lib/repositories/companion-profile'
 import { MemoryRepository } from '../_lib/repositories/memories'
 import { MessageRepository } from '../_lib/repositories/messages'
 import { RateLimitRepository } from '../_lib/repositories/rate-limits'
@@ -30,7 +31,13 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   const conversations = new ConversationRepository(env.DB)
   const messages = new MessageRepository(env.DB)
   const conversation = await new ConversationService(conversations, messages).ensure(input.conversationId, input.content)
-  const [storedHistory, relationship, memories, summary] = await Promise.all([messages.recent(conversation.id, LIMITS.recentMessageCount), new RelationshipRepository(env.DB).get(), new MemoryRepository(env.DB).list(true), new SummaryRepository(env.DB).get(conversation.id)])
+  const [storedHistory, companion, relationship, memories, summary] = await Promise.all([
+    messages.recent(conversation.id, LIMITS.recentMessageCount),
+    new CompanionProfileRepository(env.DB).get(),
+    new RelationshipRepository(env.DB).get(),
+    new MemoryRepository(env.DB).list(true),
+    new SummaryRepository(env.DB).get(conversation.id),
+  ])
   let effectiveContent = input.content
   let history = storedHistory
   const now = new Date().toISOString()
@@ -47,7 +54,7 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   } else {
     userMessage = await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'user', content: effectiveContent, tokenEstimate: estimateTokens(effectiveContent), now })
   }
-  const context = assembleContext({ relationship, memories, summary: summary?.summary ?? null, messages: history, currentInput: effectiveContent })
+  const context = assembleContext({ companion, relationship, memories, summary: summary?.summary ?? null, messages: history, currentInput: effectiveContent })
   await conversations.touch(conversation.id, now)
   const encoder = new TextEncoder()
   const stream = new TransformStream<Uint8Array, Uint8Array>()

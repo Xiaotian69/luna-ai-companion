@@ -1,5 +1,6 @@
 import { LIMITS } from '../../../config/limits'
 import { LUNA_PERSONA } from '../../../config/persona'
+import { resolveRelationshipLabel, type CompanionProfileInput } from '../../../shared/companion'
 import type { ModelMessage } from '../../../shared/stream'
 import type { RelationshipState } from '../repositories/types'
 
@@ -13,9 +14,21 @@ function memoryScore(memory: ContextMemory, topic: string): number {
   return [...memory.content].filter((char) => topicChars.has(char)).length + memory.importance
 }
 
-export function assembleContext(input: { relationship: RelationshipState; memories: ContextMemory[]; summary: string | null; messages: ContextMessage[]; currentInput: string }): ModelMessage[] {
+export function assembleContext(input: { companion: CompanionProfileInput; relationship: RelationshipState; memories: ContextMemory[]; summary: string | null; messages: ContextMessage[]; currentInput: string }): ModelMessage[] {
   const result: ModelMessage[] = [{ role: 'system', content: LUNA_PERSONA }]
-  result.push({ role: 'system', content: `当前关系状态：熟悉度 ${input.relationship.familiarity.toFixed(2)}；Luna 当前情绪：${input.relationship.currentMood}；近期事件：${input.relationship.recentEvents.join('；') || '无'}` })
+  result.push({
+    role: 'system',
+    content: [
+      '当前伴侣档案：',
+      `- 名字：${input.companion.displayName}`,
+      `- 关系：${resolveRelationshipLabel(input.companion)}`,
+      `- 对用户的称呼：${input.companion.userAddress || '未设置'}`,
+      `- 性格：${input.companion.personality}`,
+      `- 说话风格：${input.companion.speakingStyle || '自然'}`,
+      `- 相处边界：${input.companion.boundaries || '遵循基础安全规则'}`,
+    ].join('\n'),
+  })
+  result.push({ role: 'system', content: `当前关系状态：熟悉度 ${input.relationship.familiarity.toFixed(2)}；${input.companion.displayName} 当前情绪：${input.relationship.currentMood}；近期事件：${input.relationship.recentEvents.join('；') || '无'}` })
   const memories = input.memories.filter((memory) => memory.isActive).map((memory) => ({ memory, score: memoryScore(memory, input.currentInput) })).filter(({ score }) => score > 1).sort((a, b) => b.score - a.score).slice(0, LIMITS.relevantMemoryCount)
   if (memories.length) result.push({ role: 'system', content: `与当前话题相关的长期记忆：\n${memories.map(({ memory }) => `- ${memory.content}`).join('\n')}` })
   if (input.summary) result.push({ role: 'system', content: `当前对话较早内容摘要：\n${input.summary}` })
