@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeMemory, parseMemoryCandidate } from './memory-extraction'
+import { formatMemoryExtractionTranscript, normalizeMemory, parseMemoryCandidate } from './memory-extraction'
 
 describe('memory extraction validation', () => {
   it('accepts an explicit stable preference', () => {
@@ -10,5 +10,10 @@ describe('memory extraction validation', () => {
   })
   it('normalizes content for duplicate suppression', () => {
     expect(normalizeMemory(' 用户 喜欢 Jazz。')).toBe(normalizeMemory('用户喜欢jazz'))
+  })
+  it('uses a neutral companion label in the extraction transcript', () => {
+    const transcript = formatMemoryExtractionTranscript('你好', '晚上好')
+    expect(transcript).toContain('AI 伴侣：晚上好')
+    expect(transcript).not.toContain('Luna')
   })
 })

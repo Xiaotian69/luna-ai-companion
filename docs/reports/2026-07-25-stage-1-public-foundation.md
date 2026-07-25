@@ -10,6 +10,7 @@
 - Treats editable profile text as quoted preference data and repeats non-overridable AI identity, truthfulness, and anti-dependency rules after it.
 - Added the independent “我的 AI 伴侣” navigation entry and settings page without redesigning the existing chat UI.
 - Shared the saved companion name across the chat title, composer, response status, navigation label, and upstream error message.
+- Removed the remaining Luna-specific labels from background memory extraction and conversation summaries.
 - Kept advanced speaking-style and boundary controls collapsed by default.
 - Prevented failed profile reads from exposing a saveable default profile; the page now requires a successful retry before it can write.
 - Enabled HTTPS avatar URLs under CSP and added an initial-letter fallback when the remote image fails.
@@ -24,12 +25,12 @@
 - Secret scan: passed; current repository files and all reachable Git-history blobs checked.
 - TypeScript: passed with zero errors.
 - ESLint: passed with zero errors.
-- Vitest/Miniflare: 24 test files, 54 tests passed, zero failed.
+- Vitest/Miniflare: 24 test files, 56 tests passed, zero failed.
 - Production build: passed; 1,877 modules transformed.
 - Playwright: 5 passed across desktop and mobile, 1 desktop-only mobile-layout assertion intentionally skipped, zero failed.
 - Added end-to-end coverage for companion rename, relationship selection, save, avatar failure fallback, and the updated identity in chat.
 - `git diff --check`: passed.
-- Independent code review found no Critical issues. All seven Important findings and the API error-boundary Minor finding were addressed before this report was finalized.
+- Independent code review found no Critical issues. All seven Important findings and both non-blocking Luna-label/API error-boundary Minor findings were addressed before this report was finalized.
 
 ## GitHub
 
