@@ -8,6 +8,7 @@ describe('AppShell', () => {
     render(<MemoryRouter><AppShell onLogout={() => undefined}><p>聊天内容</p></AppShell></MemoryRouter>)
     expect(screen.getByLabelText('主导航')).toHaveClass('nav-rail')
     expect(screen.getByRole('link', { name: '聊天' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '我的 AI 伴侣' })).toBeInTheDocument()
     expect(screen.getByText('聊天内容')).toBeInTheDocument()
   })
 })
