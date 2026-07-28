@@ -1,7 +1,15 @@
 export interface Bindings {
   DB: D1Database
-  DEEPSEEK_API_KEY: string
-  MINIMAX_API_KEY: string
+  DEEPSEEK_API_KEY?: string
+  APP_MODE?: 'cloud' | 'local'
+  CHAT_PROVIDER?: 'deepseek' | 'ollama'
+  CHAT_BASE_URL?: string
+  CHAT_MODEL?: string
+  CHAT_API_KEY?: string
+  EMBEDDING_BASE_URL?: string
+  EMBEDDING_MODEL?: string
+  MINIMAX_API_KEY?: string
+  LOCAL_TTS_ENDPOINT?: string
   APP_PASSWORD: string
   SESSION_SECRET: string
   ENVIRONMENT?: 'development' | 'test' | 'production'

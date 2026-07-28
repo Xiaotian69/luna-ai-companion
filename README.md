@@ -1,54 +1,72 @@
-# Luna
+# Luna AI Companion
 
-Luna 是一个单用户中文 AI 陪伴聊天网页。它使用 React + Vite + TypeScript、Cloudflare Pages Functions 与 D1，文字模型为 DeepSeek `deepseek-v4-flash`，语音模型为 MiniMax `speech-2.8-turbo`。
+Luna 是一个本地优先、可自托管、单用户、中文优先的 AI 伴侣网页。Luna 只是默认角色；名字、头像、关系、称呼、性格、说话风格和相处边界都可以在设置中修改。
 
 ## 已实现
 
-- DeepSeek SSE 流式聊天、停止与重新生成
-- 新建/查看历史对话、复制与删除消息、刷新后持久化
-- D1 上下文摘要、长期记忆提取和记忆管理
-- MiniMax 动态系统音色、试听、参数设置、自动朗读和浏览器音频缓存
-- 单用户密码、签名 HttpOnly/Secure/SameSite Cookie、D1 会话、请求限流和每日配额
-- B 方案极简图标栏、历史抽屉、深浅主题、移动端安全区
-- 严格 TypeScript、Zod 输入校验、Vitest/Miniflare、Playwright 和密钥扫描
+- 自定义伴侣档案会保存在 D1，并参与每轮上下文；角色始终明确自己是 AI。
+- 文本可选本机 Ollama 或云端 DeepSeek。本地模式失败会明确报错，绝不静默上传到云端；云端覆盖必须显式请求并确认。
+- 长期记忆包含分类、敏感度、置信度、访问与冲突替换元数据。凭据、身份、支付、健康与亲密信息当前都不会自动保存；服务层保留可信确认能力，但聊天 API 和界面尚未提供这项确认流程。
+- 记忆按关键词/分类、待续状态、重要度、时效和使用情况确定性排序；可选本机 embedding，失败时仍有确定性回退。回复只展示真正注入上下文的“本次使用的记忆”。
+- 记忆可查看、编辑、启停、删除、清空，并可导出/恢复严格版本化 JSON 备份。
+- 语音默认使用浏览器系统语音；可选部署者配置的本地 TTS 端点或 MiniMax。MiniMax 不是运行必需项。
+- 支持 SSE 流式回复、停止/重新生成、对话历史、结构化摘要、D1 持久化、用量限制与响应式界面。
 
-## 本地开发
+详细边界见 [本地模式](./docs/LOCAL_MODE.md)、[云端部署](./docs/CLOUD_MODE.md)和[安全说明](./docs/SECURITY.md)。
 
-需要 Node.js 24+。安装依赖：
+## 快速开始：本地 Ollama
 
-```bash
-npm install
+要求 Node.js 24+、Ollama。先在一个终端启动 Ollama，再在项目目录执行：
+
+```powershell
+npm ci
+Copy-Item .dev.vars.local.example .dev.vars.local
+ollama pull qwen3:4b
+npm run check:local
+npm run db:migrate:local
+npm run dev:local
 ```
 
-复制 `.dev.vars.example` 为 `.dev.vars`，设置：
+编辑不会被 Git 跟踪的 `.dev.vars.local`，至少替换 `APP_PASSWORD`（8 字符以上）与 `SESSION_SECRET`（32 字符以上）。默认聊天配置为：
 
 ```dotenv
-DEEPSEEK_API_KEY=你的 DeepSeek Key
-MINIMAX_API_KEY=你的 MiniMax Key
-APP_PASSWORD=至少 8 位的本地登录密码
-SESSION_SECRET=至少 32 位随机字符串
-ENVIRONMENT=development
+APP_MODE=local
+CHAT_PROVIDER=ollama
+CHAT_BASE_URL=http://127.0.0.1:11434/v1
+CHAT_MODEL=qwen3:4b
 ```
 
-`.dev.vars`、`.env`、私钥文件均已被 `.gitignore` 排除。不要把真实值复制到 `VITE_*` 变量：任何 `VITE_*` 值都会进入浏览器包。
+打开 Wrangler 输出的地址（通常是 `http://127.0.0.1:8788`），使用 `APP_PASSWORD` 登录。完整安装、macOS/Linux 命令和故障代码见 [docs/LOCAL_MODE.md](./docs/LOCAL_MODE.md)。
 
-创建本地 D1 并迁移：
+## 提供方与环境变量
 
-```bash
+所有凭据都只能放在 Wrangler/Cloudflare 的服务端环境；不要创建任何 `VITE_*` 密钥变量。
+
+| 变量 | 是否必需 | 用途 |
+| --- | --- | --- |
+| `APP_PASSWORD` | 是 | 单用户登录密码，至少 8 字符 |
+| `SESSION_SECRET` | 是 | Cookie 签名密钥，至少 32 字符 |
+| `APP_MODE` | 建议显式设置 | `local` 或 `cloud`；默认 `cloud` |
+| `CHAT_PROVIDER` | 可选 | `ollama` 或 `deepseek`；默认 `deepseek` |
+| `CHAT_BASE_URL` / `CHAT_MODEL` | Ollama 或自定义聊天配置时 | OpenAI 兼容端点与模型 |
+| `CHAT_API_KEY` | 云聊天时可选 | 通用服务端密钥；可替代 `DEEPSEEK_API_KEY` 供当前 DeepSeek provider 使用 |
+| `DEEPSEEK_API_KEY` | DeepSeek 聊天时 | DeepSeek 服务端密钥 |
+| `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | 可选 | 仅接受回环地址的本机 OpenAI 兼容 embedding；两项需同时配置 |
+| `LOCAL_TTS_ENDPOINT` | 可选 | 本地模式仅回环 HTTP(S)；云端模式仅外部 HTTPS 公共 FQDN |
+| `MINIMAX_API_KEY` | 可选 | MiniMax 云语音；浏览器语音不需要 |
+| `ENVIRONMENT` | 可选 | `development`、`test` 或 `production` |
+
+示例见 [`.dev.vars.local.example`](./.dev.vars.local.example) 与 [`.dev.vars.example`](./.dev.vars.example)。云端所需值和信任边界见 [docs/CLOUD_MODE.md](./docs/CLOUD_MODE.md)。
+
+## 常用命令
+
+```powershell
+npm run dev             # 仅启动 Vite 前端
+npm run dev:full        # 构建并启动本地 Pages Functions 与 D1
+npm run dev:local       # 校验 Ollama 后使用 .dev.vars.local 启动
+npm run dev:cloud       # 使用 .dev.vars 启动云聊天开发模式
+npm run check:local
 npm run db:migrate:local
-```
-
-构建并同时启动 Pages 静态资源与 Functions：
-
-```bash
-npm run dev:full
-```
-
-打开 Wrangler 输出的地址（通常为 `http://localhost:8788`），使用 `.dev.vars` 中的 `APP_PASSWORD` 登录。单独运行 `npm run dev` 只启动前端；此时 API 会代理到 `http://localhost:8788`。
-
-## 质量检查
-
-```bash
 npm run check:secrets
 npm run typecheck
 npm run lint
@@ -57,55 +75,17 @@ npm run build
 npm run test:e2e
 ```
 
-测试不会调用付费 API。真实 API 烟雾测试应只使用短消息和短试听句，避免意外费用。
+测试不会调用付费 API。Ollama 模型下载、真实模型质量、真实 MiniMax 与外部 TTS 应另做小流量烟雾测试。
 
-## 创建 Cloudflare D1
+## 项目结构
 
-登录 Wrangler 后创建数据库：
+- `src/`：React 前端、聊天、伴侣、记忆、语音和用量页面。
+- `functions/api/`：Cloudflare Pages Functions API。
+- `functions/_lib/`：提供方客户端、仓储与服务。
+- `shared/`：前后端共享 Schema、SSE 与备份格式。
+- `migrations/`：D1 数据库迁移。
+- `config/`：模型、限制与基础人格安全规则。
 
-```bash
-npx wrangler login
-npx wrangler d1 create luna-db
-```
+## 许可与官方链接
 
-把返回的 `database_id` 写入 `wrangler.toml`，然后执行生产迁移：
-
-```bash
-npx wrangler d1 migrations apply luna-db --remote
-```
-
-数据库包含 `conversations`、`messages`、`conversation_summaries`、`memories`、`relationship_state`、`sessions`、`usage_daily` 和 `rate_limits`。建议定期用 Wrangler 导出 D1，并在高风险变更前备份。
-
-## 部署到 Cloudflare Pages
-
-1. 在 Cloudflare Dashboard 创建 Pages 项目并连接 GitHub 仓库。
-2. 构建命令设置为 `npm run build`，输出目录设置为 `dist`。
-3. 为 Pages 项目绑定 D1，变量名必须是 `DB`，数据库选择 `luna-db`。
-4. 在 Pages 的 Settings → Variables and Secrets 中添加四个加密 Secret：`DEEPSEEK_API_KEY`、`MINIMAX_API_KEY`、`APP_PASSWORD`、`SESSION_SECRET`。
-5. 不要创建任何 `VITE_DEEPSEEK_*` 或 `VITE_MINIMAX_*` 变量。
-6. 首次部署前执行远程 D1 迁移；随后推送 `main` 即由 Pages Git 集成自动部署。
-
-GitHub Actions 只运行静态检查、测试与构建，不需要也不应配置模型 Key。Cloudflare Pages Git 集成负责线上部署。
-
-## 配置位置
-
-- `config/models.ts`：模型、API 地址与主要参数
-- `config/limits.ts`：上下文阈值、输入限制、速率与每日配额
-- `config/persona.ts`：Luna 的完整可编辑人物设定
-- `migrations/0001_initial.sql`：D1 初始迁移
-
-## 安全与费用
-
-- 所有模型请求仅由 Pages Functions 发起；浏览器包不包含 API Key。
-- Cookie 设置 `HttpOnly; Secure; SameSite=Strict`，会话只以 SHA-256 哈希写入 D1。
-- 登录、聊天和 TTS 分别限流；聊天和语音有每日调用上限。
-- 自动朗读关闭时不会自动请求 TTS；相同文本与参数使用浏览器 Cache API。
-- 若 Key 曾粘贴到公开位置或提交历史，应立即在 DeepSeek/MiniMax 控制台轮换，而不只是删除文件。
-
-## 官方接口参考
-
-- [DeepSeek Chat Completion](https://api-docs.deepseek.com/api/create-chat-completion)
-- [MiniMax 中国区 T2A HTTP](https://platform.minimaxi.com/docs/api-reference/speech-t2a-http)
-- [MiniMax 中国区 Get Voice](https://platform.minimaxi.com/docs/api-reference/voice-management-get)
-- [Cloudflare D1](https://developers.cloudflare.com/d1/)
-- [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/)
+原创代码使用 [MIT License](./LICENSE)，第三方依赖、模型、音色与服务许可见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。服务入口：[DeepSeek](https://platform.deepseek.com/)、[MiniMax](https://platform.minimaxi.com/)、[Ollama](https://ollama.com/)、[Cloudflare D1](https://developers.cloudflare.com/d1/) 和 [Pages Functions](https://developers.cloudflare.com/pages/functions/)。

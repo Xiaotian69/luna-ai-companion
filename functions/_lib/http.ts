@@ -20,6 +20,6 @@ export function withSecurityHeaders(response: Response, requestId: string): Resp
   next.headers.set('X-Content-Type-Options', 'nosniff')
   next.headers.set('Referrer-Policy', 'no-referrer')
   next.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-  next.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob: data:")
+  next.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; media-src 'self' blob: data:")
   return next
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { LIMITS } from './limits'
 import { MODELS } from './models'
-import { LUNA_PERSONA } from './persona'
+import { COMPANION_CORE_PROMPT } from './persona'
 
 describe('Luna configuration', () => {
   it('uses the requested current models and endpoints', () => {
@@ -18,8 +18,8 @@ describe('Luna configuration', () => {
   })
 
   it('states identity transparency and anti-dependency rules', () => {
-    expect(LUNA_PERSONA).toContain('AI')
-    expect(LUNA_PERSONA).toContain('不假装是真实人类')
-    expect(LUNA_PERSONA).toContain('不制造情感依赖')
+    expect(COMPANION_CORE_PROMPT).toContain('AI')
+    expect(COMPANION_CORE_PROMPT).toContain('不假装是真实人类')
+    expect(COMPANION_CORE_PROMPT).toContain('不制造情感依赖')
   })
 })

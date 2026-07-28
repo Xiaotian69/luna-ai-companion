@@ -1,5 +1,18 @@
-DEEPSEEK_API_KEY=replace-with-deepseek-key
-MINIMAX_API_KEY=replace-with-minimax-key
-APP_PASSWORD=replace-with-a-strong-password
+# Cloud text model. Create your own key at https://platform.deepseek.com/
+DEEPSEEK_API_KEY=replace-with-your-deepseek-key
+
+# Optional cloud speech. Create your own key at https://platform.minimaxi.com/
+MINIMAX_API_KEY=
+
+# Optional TTS endpoint for cloud mode; it must use HTTPS with a public FQDN.
+# Local mode instead accepts loopback endpoints such as http://127.0.0.1:8000/tts.
+# It accepts POST JSON (text, voiceId, speed, pitch, volume) and returns audio/*.
+LOCAL_TTS_ENDPOINT=
+
+# Single-user login password. Use at least 8 characters.
+APP_PASSWORD=replace-with-a-strong-local-password
+
+# Cookie signing secret. Generate at least 32 random characters.
 SESSION_SECRET=replace-with-at-least-32-random-characters
+
 ENVIRONMENT=development

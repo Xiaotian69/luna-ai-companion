@@ -1,23 +1,10 @@
-import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { scanRepository } from './secret-scan.mjs'
 
-const output = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'])
-const files = output.toString('utf8').split('\0').filter(Boolean)
-const secretPattern = /\bsk-(?:cp-)?[A-Za-z0-9_-]{16,}\b/g
-const textExtensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json', '.md', '.toml', '.yml', '.yaml', '.css', '.html', '.sql'])
-const findings = []
+const result = scanRepository()
 
-for (const file of files) {
-  const dot = file.lastIndexOf('.')
-  if (dot < 0 || !textExtensions.has(file.slice(dot))) continue
-  const content = readFileSync(file, 'utf8')
-  if (secretPattern.test(content)) findings.push(file)
-  secretPattern.lastIndex = 0
-}
-
-if (findings.length) {
-  console.error(`Potential API key found in: ${findings.join(', ')}`)
+if (result.findings.length) {
+  console.error(`Unsafe repository content found in: ${result.findings.join(', ')}`)
   process.exit(1)
 }
 
-console.log(`Secret scan passed (${files.length} repository files checked).`)
+console.log(`Secret scan passed (${result.filesChecked} current files and ${result.historyObjectsChecked} reachable history blobs checked).`)

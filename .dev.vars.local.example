@@ -1,0 +1,23 @@
+# Local text generation through Ollama's OpenAI-compatible API. No chat API key is needed.
+APP_MODE=local
+CHAT_PROVIDER=ollama
+CHAT_BASE_URL=http://127.0.0.1:11434/v1
+CHAT_MODEL=qwen3:4b
+CHAT_API_KEY=
+
+# Optional local semantic retrieval. Leave both blank to use deterministic keyword/category ranking.
+EMBEDDING_BASE_URL=
+EMBEDDING_MODEL=
+
+# Optional local TTS. The endpoint must be loopback HTTP(S), with no credentials,
+# query, or fragment. It receives POST JSON: text, voiceId, speed, pitch, volume,
+# and must return a bounded audio/* response. Browser speech needs no endpoint.
+LOCAL_TTS_ENDPOINT=
+
+# Optional cloud speech enhancement. Leave blank for browser or local speech.
+MINIMAX_API_KEY=
+
+# Replace these local-only placeholders before use. Never commit the copied file.
+APP_PASSWORD=replace-with-a-strong-local-password
+SESSION_SECRET=replace-with-at-least-32-random-characters
+ENVIRONMENT=development
