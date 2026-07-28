@@ -1,8 +1,8 @@
 # Luna AI Companion
 
-Luna 是一个可自托管、单用户、中文优先的 AI 伴侣网页。Luna 只是默认示例：使用者可以在网页内自由设置名字、头像、关系、称呼、性格、说话风格和相处边界。
+Luna 是一个本地优先、可自托管、单用户、中文优先的 AI 伴侣网页。Luna 只是默认示例：使用者可以在网页内自由设置名字、头像、关系、称呼、性格、说话风格和相处边界。
 
-项目当前支持 Cloudflare + DeepSeek + MiniMax。无需商业 Token 的本地开放权重模型模式正在按 [ROADMAP.md](./ROADMAP.md) 分阶段实现。
+文本聊天默认可通过本机 Ollama 运行，不需要商业聊天 API Key；DeepSeek 云端文本与 MiniMax 云端语音是可选能力。本地模式不会在 Ollama 故障时静默回退到云端。完整设置和隐私边界见 [本地文本模式指南](./docs/LOCAL_MODE.md)。
 
 ## 功能特色
 
@@ -42,20 +42,25 @@ Luna 是一个可自托管、单用户、中文优先的 AI 伴侣网页。Luna 
 
 ## 快速开始
 
-要求 Node.js 24+。
+要求 Node.js 24+ 和 Ollama。下面是本地优先路径；完整安装与故障排查见 [docs/LOCAL_MODE.md](./docs/LOCAL_MODE.md)。
 
 ```powershell
 npm ci
-Copy-Item .dev.vars.example .dev.vars
+Copy-Item .dev.vars.local.example .dev.vars.local
+# 在另一个终端运行：ollama serve
+ollama pull qwen3:4b
+npm run check:local
 npm run db:migrate:local
-npm run dev:full
+npm run dev:local
 ```
 
-编辑 `.dev.vars`，填写你自己的值：
+先按上方注释在另一个终端运行 `ollama serve`。编辑 `.dev.vars.local`，替换本地登录密码和会话密钥；本地文本不需要 DeepSeek Key：
 
 ```dotenv
-DEEPSEEK_API_KEY=你的 DeepSeek Key
-MINIMAX_API_KEY=你的 MiniMax Key
+APP_MODE=local
+CHAT_PROVIDER=ollama
+CHAT_BASE_URL=http://127.0.0.1:11434/v1
+CHAT_MODEL=qwen3:4b
 APP_PASSWORD=至少 8 位的本地登录密码
 SESSION_SECRET=至少 32 位随机字符串
 ENVIRONMENT=development
@@ -63,13 +68,18 @@ ENVIRONMENT=development
 
 打开 Wrangler 输出的地址，通常为 [http://127.0.0.1:8788](http://127.0.0.1:8788)，使用 `APP_PASSWORD` 登录。
 
-`.dev.vars` 已被 Git 忽略。不要把模型密钥放进任何 `VITE_*` 变量，因为 `VITE_*` 会进入浏览器包。
+`.dev.vars.local` 和 `.wrangler/state` 已被 Git 忽略。对话与记忆保存在本机 `.wrangler/state`。不要把模型密钥放进任何 `VITE_*` 变量，因为 `VITE_*` 会进入浏览器包。
+
+如需 DeepSeek 云端开发，复制 `.dev.vars.example` 为 `.dev.vars`、填写自己的 Key，然后运行 `npm run dev:cloud`。这不会改变本地模式“失败即明确报错”的行为。
 
 ## 常用命令
 
 ```powershell
 npm run dev             # 仅启动 Vite 前端
 npm run dev:full        # 构建并启动本地 Pages Functions 与 D1
+npm run dev:local       # 检查 Ollama，并以本地文本模式启动
+npm run dev:cloud       # 使用 .dev.vars 的 DeepSeek 云端开发模式
+npm run check:local     # 检查本地端点与配置模型
 npm run db:migrate:local
 npm run check:secrets
 npm run typecheck

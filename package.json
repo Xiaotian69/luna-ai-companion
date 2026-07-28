@@ -7,6 +7,8 @@
     "dev": "vite",
     "preview": "vite preview",
     "dev:full": "npm run build && wrangler pages dev dist --persist-to .wrangler/state",
+    "dev:local": "npm run check:local && npm run build && wrangler pages dev dist --persist-to .wrangler/state --env-file .dev.vars.local",
+    "dev:cloud": "npm run build && wrangler pages dev dist --persist-to .wrangler/state --env-file .dev.vars",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
@@ -14,6 +16,7 @@
     "test:run": "vitest run",
     "test:e2e": "playwright test",
     "check:secrets": "node scripts/check-secrets.mjs",
+    "check:local": "node --env-file-if-exists=.dev.vars.local scripts/check-local-runtime.mjs",
     "db:migrate:local": "wrangler d1 migrations apply luna-db --local --persist-to .wrangler/state"
   },
   "dependencies": {

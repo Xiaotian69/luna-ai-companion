@@ -1,0 +1,14 @@
+# Local text generation through Ollama's OpenAI-compatible API. No chat API key is needed.
+APP_MODE=local
+CHAT_PROVIDER=ollama
+CHAT_BASE_URL=http://127.0.0.1:11434/v1
+CHAT_MODEL=qwen3:4b
+CHAT_API_KEY=
+
+# Speech remains optional. Leave this safe placeholder unless you enable cloud speech.
+MINIMAX_API_KEY=replace-with-your-minimax-key
+
+# Replace these local-only placeholders before use. Never commit the copied file.
+APP_PASSWORD=replace-with-a-strong-local-password
+SESSION_SECRET=replace-with-at-least-32-random-characters
+ENVIRONMENT=development

@@ -12,7 +12,7 @@ const keyPatterns = [
 
 const forbiddenDirectories = /(^|\/)(?:\.superpowers|\.wrangler|work|logs?)(?:\/|$)/i
 const forbiddenExtensions = /\.(?:sqlite(?:-wal|-shm)?|db|gguf|safetensors|onnx|wav|mp3|log|pem|key|p12|pfx)$/i
-const safeEnvironmentExamples = /^\.(?:env|dev\.vars)\.(?:example|sample|template)$/i
+const safeEnvironmentExamples = /^\.(?:env|dev\.vars)(?:\.[a-z0-9_-]+)*\.(?:example|sample|template)$/i
 const environmentFiles = /^\.(?:env|dev\.vars)(?:\.|$)/i
 
 export function containsSecret(content) {

@@ -28,6 +28,7 @@ describe('public repository safety scan', () => {
     expect(isForbiddenRepositoryPath('.dev.vars.production')).toBe(true)
     expect(isForbiddenRepositoryPath('private.pem')).toBe(true)
     expect(isForbiddenRepositoryPath('.dev.vars.example')).toBe(false)
+    expect(isForbiddenRepositoryPath('.dev.vars.local.example')).toBe(false)
     expect(isForbiddenRepositoryPath('migrations/0001_initial.sql')).toBe(false)
   })
 
