@@ -20,10 +20,14 @@ export function RuntimePanel() {
 
   useEffect(() => {
     let active = true
-    api<RuntimeStatus>('/api/runtime')
+    const controller = new AbortController()
+    api<RuntimeStatus>('/api/runtime', { signal: controller.signal })
       .then((value) => { if (active) setStatus(value) })
       .catch((value) => { if (active) setError(value instanceof Error ? value.message : 'Runtime status is unavailable.') })
-    return () => { active = false }
+    return () => {
+      active = false
+      controller.abort()
+    }
   }, [])
 
   const repair = status ? repairText(status) : null

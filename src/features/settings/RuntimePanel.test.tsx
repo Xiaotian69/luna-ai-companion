@@ -20,7 +20,7 @@ function status(overrides: Partial<RuntimeStatus> = {}): RuntimeStatus {
 }
 
 describe('RuntimePanel', () => {
-  beforeEach(() => mockApi.mockReset())
+  beforeEach(() => { mockApi.mockReset() })
 
   it('shows the active local runtime and model', async () => {
     mockApi.mockResolvedValue(status())
@@ -31,7 +31,7 @@ describe('RuntimePanel', () => {
     expect(screen.getByText('Ollama')).toBeInTheDocument()
     expect(screen.getByText('qwen3:4b')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Ready')
-    expect(mockApi).toHaveBeenCalledWith('/api/runtime')
+    expect(mockApi).toHaveBeenCalledWith('/api/runtime', expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 
   it('explains how to install a missing Ollama model', async () => {
@@ -48,5 +48,33 @@ describe('RuntimePanel', () => {
     render(<RuntimePanel />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Start Ollama')
+  })
+
+  it('distinguishes cloud configuration errors from provider outages', async () => {
+    mockApi.mockResolvedValueOnce(status({ mode: 'cloud', provider: 'deepseek', configured: false, reachable: true }))
+    const { unmount } = render(<RuntimePanel />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('not configured')
+    unmount()
+
+    mockApi.mockResolvedValueOnce(status({ mode: 'cloud', provider: 'deepseek', configured: true, reachable: false }))
+    render(<RuntimePanel />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('not reachable')
+  })
+
+  it('cancels its runtime request when unmounted', () => {
+    let signal: AbortSignal | undefined
+    mockApi.mockImplementation((_path, init) => {
+      signal = init?.signal ?? undefined
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+      })
+    })
+
+    const { unmount } = render(<RuntimePanel />)
+    expect(signal?.aborted).toBe(false)
+
+    unmount()
+
+    expect(signal?.aborted).toBe(true)
   })
 })
