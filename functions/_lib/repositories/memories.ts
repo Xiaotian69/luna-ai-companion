@@ -40,28 +40,44 @@ function validateScore(name: string, value: number): void {
 export class MemoryRepository {
   constructor(private readonly db: D1Database) {}
   async prepareNormalizedInvariant(): Promise<void> {
-    const active = (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 ORDER BY created_at ASC, id ASC').all<MemoryRow>()).results.map(map)
-    const groups = new Map<string, Memory[]>()
-    for (const memory of active) {
-      const normalized = canonicalizeMemoryContent(memory.content)
-      groups.set(normalized, [...(groups.get(normalized) ?? []), memory])
-    }
-    const statements: D1PreparedStatement[] = []
-    for (const [normalized, group] of groups) {
-      const ranked = [...group].sort((left, right) => right.importance - left.importance || right.confidence - left.confidence || left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
-      const [winner, ...losers] = ranked
-      let mergedConfidence = winner.confidence
-      let mergedImportance = winner.importance
-      for (const memory of losers) {
-        mergedConfidence = Math.max(mergedConfidence, Math.min(1, 1 - ((1 - mergedConfidence) * (1 - memory.confidence))))
-        mergedImportance = Math.max(mergedImportance, memory.importance)
-        statements.push(this.db.prepare('UPDATE memories SET is_active = 0, normalized_content = NULL WHERE id = ? AND is_active = 1').bind(memory.id))
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const legacy = (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 AND normalized_content IS NULL ORDER BY created_at ASC, id ASC').all<MemoryRow>()).results.map(map)
+      if (!legacy.length) return
+      const keys = [...new Set(legacy.map((memory) => canonicalizeMemoryContent(memory.content)))]
+      const normalized = (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 AND normalized_content IN (SELECT value FROM json_each(?)) ORDER BY created_at ASC, id ASC').bind(JSON.stringify(keys)).all<MemoryRow>()).results.map(map)
+      const groups = new Map<string, Memory[]>()
+      for (const memory of [...legacy, ...normalized]) {
+        const key = memory.normalizedContent ?? canonicalizeMemoryContent(memory.content)
+        groups.set(key, [...(groups.get(key) ?? []), memory])
       }
-      if (losers.length || winner.normalizedContent !== normalized || winner.confidence !== mergedConfidence || winner.importance !== mergedImportance) {
-        statements.push(this.db.prepare('UPDATE memories SET normalized_content = ?, importance = ?, confidence = ? WHERE id = ? AND is_active = 1').bind(normalized, mergedImportance, mergedConfidence, winner.id))
+      let contended = false
+      for (const [key, group] of groups) {
+        const ranked = [...group].sort((left, right) => Number(right.normalizedContent === key) - Number(left.normalizedContent === key) || right.importance - left.importance || right.confidence - left.confidence || left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
+        const [winner, ...losers] = ranked
+        let mergedConfidence = winner.confidence
+        let mergedImportance = winner.importance
+        for (const memory of losers) {
+          mergedConfidence = Math.max(mergedConfidence, Math.min(1, 1 - ((1 - mergedConfidence) * (1 - memory.confidence))))
+          mergedImportance = Math.max(mergedImportance, memory.importance)
+        }
+        const snapshot = group.map((memory) => ({ id: memory.id, isActive: 1, updatedAt: memory.updatedAt, content: memory.content, confidence: memory.confidence, importance: memory.importance, normalizedContent: memory.normalizedContent }))
+        const result = await this.db.prepare(`WITH snapshot AS (
+          SELECT json_extract(value, '$.id') AS id, json_extract(value, '$.isActive') AS is_active, json_extract(value, '$.updatedAt') AS updated_at, json_extract(value, '$.content') AS content, json_extract(value, '$.confidence') AS confidence, json_extract(value, '$.importance') AS importance, json_extract(value, '$.normalizedContent') AS normalized_content
+          FROM json_each(?)
+        )
+        UPDATE memories
+        SET is_active = CASE WHEN id = ? THEN 1 ELSE 0 END,
+            normalized_content = CASE WHEN id = ? THEN ? ELSE NULL END,
+            confidence = CASE WHEN id = ? THEN ? ELSE confidence END,
+            importance = CASE WHEN id = ? THEN ? ELSE importance END
+        WHERE id IN (SELECT id FROM snapshot)
+          AND (SELECT COUNT(*) FROM memories current JOIN snapshot expected ON current.id = expected.id WHERE current.is_active = expected.is_active AND current.updated_at = expected.updated_at AND current.content = expected.content AND current.confidence = expected.confidence AND current.importance = expected.importance AND current.normalized_content IS expected.normalized_content) = (SELECT COUNT(*) FROM snapshot)
+          AND NOT EXISTS (SELECT 1 FROM memories outsider WHERE outsider.is_active = 1 AND outsider.normalized_content = ? AND outsider.id NOT IN (SELECT id FROM snapshot))`).bind(JSON.stringify(snapshot), winner.id, winner.id, key, winner.id, mergedConfidence, winner.id, mergedImportance, key).run()
+        if ((result.meta.changes ?? 0) === 0) contended = true
       }
+      if (contended && attempt === 2) throw new Error('Memory normalization repair contended')
     }
-    if (statements.length) await this.db.batch(statements)
+    if (await this.db.prepare('SELECT id FROM memories WHERE is_active = 1 AND normalized_content IS NULL LIMIT 1').first()) throw new Error('Memory normalization repair contended')
   }
   private insert(input: MemoryCreateInput, requirePreviousChange = false): D1PreparedStatement {
     const value = withDefaults(input)

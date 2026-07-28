@@ -19,16 +19,20 @@ function relevance(memory: Awaited<ReturnType<MemoryRepository['listCandidates']
   return overlap * 100 + memory.importance
 }
 
+function serializeUntrustedPayload(newMemory: { content: string }, memoryCandidates: Array<{ id: string; content: string }>): string {
+  return JSON.stringify({ new_memory: newMemory, memory_candidates: memoryCandidates }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+}
+
 function conflictPayload(memories: Awaited<ReturnType<MemoryRepository['listCandidates']>>, newContent: string): string {
   const ranked = [...memories].sort((left, right) => relevance(right, newContent) - relevance(left, newContent) || right.importance - left.importance || left.id.localeCompare(right.id))
   const selected: Array<{ id: string; content: string }> = []
   const newMemory = { content: newContent.slice(0, MAX_CONFLICT_CONTENT_CHARS) }
   for (const memory of ranked.slice(0, MAX_CONFLICT_CANDIDATES)) {
     const next = [...selected, { id: memory.id, content: memory.content.slice(0, MAX_CONFLICT_CONTENT_CHARS) }]
-    if (JSON.stringify({ new_memory: newMemory, memory_candidates: next }).length > MAX_CONFLICT_SERIALIZED_CHARS) break
+    if (serializeUntrustedPayload(newMemory, next).length > MAX_CONFLICT_SERIALIZED_CHARS) continue
     selected.push(next.at(-1)!)
   }
-  return JSON.stringify({ new_memory: newMemory, memory_candidates: selected }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+  return serializeUntrustedPayload(newMemory, selected)
 }
 
 type DetectedSensitivity = MemorySensitivity | 'credential'

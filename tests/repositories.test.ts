@@ -16,6 +16,34 @@ async function insertLegacyMemory(input: { id: string; content: string; importan
   await db.prepare('INSERT INTO memories (id, memory_type, content, importance, category, sensitivity, confidence, access_count, normalized_content, source_conversation_id, source_message_id, created_at, updated_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?, ?, 1)').bind(input.id, 'preference', input.content, input.importance ?? 0.5, 'about_user', 'normal', input.confidence ?? 0.5, '2026-07-15T11:09:40Z', '2026-07-15T11:09:40Z').run()
 }
 
+function databaseWithSnapshotHook(afterSnapshot: (query: string) => Promise<void>): D1Database {
+  return new Proxy(db, {
+    get(target, property) {
+      if (property === 'prepare') {
+        return (query: string) => {
+          const statement = target.prepare(query)
+          if (!/SELECT \* FROM memories WHERE is_active = 1/i.test(query) || /normalized_content\s+IN/i.test(query)) return statement
+          return new Proxy(statement, {
+            get(statementTarget, statementProperty) {
+              if (statementProperty === 'all') {
+                return async <T>() => {
+                  const result = await statementTarget.all<T>()
+                  await afterSnapshot(query)
+                  return result
+                }
+              }
+              const value = Reflect.get(statementTarget, statementProperty)
+              return typeof value === 'function' ? value.bind(statementTarget) : value
+            },
+          })
+        }
+      }
+      const value = Reflect.get(target, property)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }) as D1Database
+}
+
 beforeAll(async () => {
   mf = new Miniflare({ modules: true, script: 'export default { fetch(){ return new Response("ok") } }', d1Databases: { DB: 'luna-test' } })
   db = await mf.getD1Database('DB')
@@ -191,6 +219,62 @@ describe('D1 repositories', () => {
     await memories.prepareNormalizedInvariant()
     const afterSecond = await memories.list()
     expect(afterSecond.map(({ id, isActive, normalizedContent, importance, confidence }) => ({ id, isActive, normalizedContent, importance, confidence }))).toEqual(snapshot)
+  })
+
+  it('retries a stale legacy group atomically when content changes after its snapshot', async () => {
+    await insertLegacyMemory({ id: 'stale-edit-winner', content: 'Legacy race duplicate', importance: 0.8, confidence: 0.6 })
+    await insertLegacyMemory({ id: 'stale-edit-target', content: ' Legacy Race Duplicate。', importance: 0.2, confidence: 0.2 })
+    let injected = false
+    const hookedDb = databaseWithSnapshotHook(async () => {
+      if (injected) return
+      injected = true
+      await db.prepare('UPDATE memories SET content = ?, updated_at = ? WHERE id = ?').bind('Edited during repair', '2026-07-15T11:09:41Z', 'stale-edit-target').run()
+    })
+
+    await new MemoryRepository(hookedDb).prepareNormalizedInvariant()
+
+    expect(injected).toBe(true)
+    expect(await new MemoryRepository(db).get('stale-edit-target')).toMatchObject({ content: 'Edited during repair', isActive: true, normalizedContent: 'editedduringrepair', confidence: 0.2 })
+    expect(await new MemoryRepository(db).get('stale-edit-winner')).toMatchObject({ content: 'Legacy race duplicate', isActive: true, normalizedContent: 'legacyraceduplicate', confidence: 0.6 })
+  })
+
+  it('retries a stale legacy group without losing a concurrent reinforcement', async () => {
+    await insertLegacyMemory({ id: 'stale-reinforce-winner', content: 'Reinforcement race', importance: 0.8, confidence: 0.6 })
+    await insertLegacyMemory({ id: 'stale-reinforce-target', content: ' Reinforcement Race。', importance: 0.2, confidence: 0.2 })
+    let injected = false
+    const hookedDb = databaseWithSnapshotHook(async () => {
+      if (injected) return
+      injected = true
+      await db.prepare('UPDATE memories SET confidence = ?, importance = ?, updated_at = ? WHERE id = ?').bind(0.95, 0.95, '2026-07-15T11:09:42Z', 'stale-reinforce-target').run()
+    })
+
+    await new MemoryRepository(hookedDb).prepareNormalizedInvariant()
+
+    expect(await new MemoryRepository(db).get('stale-reinforce-target')).toMatchObject({ isActive: true, normalizedContent: 'reinforcementrace', importance: 0.95 })
+    expect((await new MemoryRepository(db).get('stale-reinforce-target'))?.confidence).toBeCloseTo(0.98)
+    expect(await new MemoryRepository(db).get('stale-reinforce-winner')).toMatchObject({ isActive: false, normalizedContent: null })
+  })
+
+  it('fails safely after bounded repeated legacy repair contention', async () => {
+    await insertLegacyMemory({ id: 'persistent-repair-contention', content: 'Persistent contention' })
+    let snapshots = 0
+    const hookedDb = databaseWithSnapshotHook(async () => {
+      snapshots += 1
+      await db.prepare('UPDATE memories SET updated_at = ? WHERE id = ?').bind(`2026-07-15T11:09:${42 + snapshots}Z`, 'persistent-repair-contention').run()
+    })
+
+    await expect(new MemoryRepository(hookedDb).prepareNormalizedInvariant()).rejects.toThrow('Memory normalization repair contended')
+    expect(snapshots).toBe(3)
+    expect(await new MemoryRepository(db).get('persistent-repair-contention')).toMatchObject({ content: 'Persistent contention', isActive: true, normalizedContent: null, confidence: 0.5 })
+    await new MemoryRepository(db).prepareNormalizedInvariant()
+  })
+
+  it('returns after a NULL-only normalization probe once legacy repair is complete', async () => {
+    const queries: string[] = []
+    const hookedDb = databaseWithSnapshotHook(async (query) => { queries.push(query) })
+    await new MemoryRepository(hookedDb).prepareNormalizedInvariant()
+    expect(queries).toHaveLength(1)
+    expect(queries[0]).toMatch(/normalized_content\s+IS\s+NULL/i)
   })
 
   it('bounds active conflict candidates to the requested category and memory type', async () => {

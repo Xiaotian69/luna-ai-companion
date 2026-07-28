@@ -207,6 +207,17 @@ describe('memory extraction merge policy', () => {
     expect(system).toMatch(/不得.*指令|never.*instructions/i)
   })
 
+  it('enforces the final escaped untrusted JSON budget for special-character-heavy content', async () => {
+    const hazardous = '<>&\\"'.repeat(100)
+    const sameBoundary = Array.from({ length: 12 }, (_, index) => memory({ id: `special-${index}-<>&`, content: `candidate-${index}-${hazardous}` }))
+    const result = await extract([extractionJson({ content: `new-${'<>&\\"'.repeat(99)}` }), '{"conflicts_memory_id":null}'], repository(sameBoundary))
+    const user = result.client.complete.mock.calls[1][0].find((item) => item.role === 'user')?.content ?? ''
+    const serialized = user.match(/<untrusted_memory_data>\n([\s\S]*?)\n<\/untrusted_memory_data>/)?.[1] ?? ''
+    expect(serialized.length).toBeLessThanOrEqual(2000)
+    expect(() => JSON.parse(serialized)).not.toThrow()
+    expect((JSON.parse(serialized) as { new_memory: { content: string } }).new_memory.content.length).toBeGreaterThan(0)
+  })
+
   it('selects a low-importance relevant conflict from a larger high-importance superset', async () => {
     const unrelated = Array.from({ length: 20 }, (_, index) => memory({ id: `high-unrelated-${index}`, content: `季度预算记录 ${index}`, importance: 1 }))
     const relevant = memory({ id: 'low-relevant-conflict', content: '用户喜欢浅色主题', importance: 0.01 })
