@@ -1,4 +1,4 @@
-import type { MemoryCategory, MemorySensitivity } from '../../../shared/memory'
+import { canonicalizeMemoryContent, type MemoryCategory, type MemorySensitivity } from '../../../shared/memory'
 import type { Memory } from './types'
 
 interface MemoryRow { id: string; memory_type: string; content: string; importance: number; category: MemoryCategory; sensitivity: MemorySensitivity; confidence: number; access_count: number; last_accessed_at: string | null; superseded_memory_id: string | null; normalized_content: string | null; source_conversation_id: string | null; source_message_id: string | null; created_at: string; updated_at: string; is_active: number }
@@ -15,7 +15,6 @@ export interface MemoryCreateInput {
   accessCount?: number
   lastAccessedAt?: string | null
   supersededMemoryId?: string | null
-  normalizedContent?: string | null
   sourceConversationId: string | null
   sourceMessageId: string | null
   now: string
@@ -30,7 +29,7 @@ function withDefaults(input: MemoryCreateInput) {
     accessCount: input.accessCount ?? 0,
     lastAccessedAt: input.lastAccessedAt ?? null,
     supersededMemoryId: input.supersededMemoryId ?? null,
-    normalizedContent: input.normalizedContent ?? null,
+    normalizedContent: canonicalizeMemoryContent(input.content),
   }
 }
 
@@ -40,28 +39,55 @@ function validateScore(name: string, value: number): void {
 
 export class MemoryRepository {
   constructor(private readonly db: D1Database) {}
+  async prepareNormalizedInvariant(): Promise<void> {
+    const active = (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 ORDER BY created_at ASC, id ASC').all<MemoryRow>()).results.map(map)
+    const groups = new Map<string, Memory[]>()
+    for (const memory of active) {
+      const normalized = canonicalizeMemoryContent(memory.content)
+      groups.set(normalized, [...(groups.get(normalized) ?? []), memory])
+    }
+    const statements: D1PreparedStatement[] = []
+    for (const [normalized, group] of groups) {
+      const ranked = [...group].sort((left, right) => right.importance - left.importance || right.confidence - left.confidence || left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
+      const [winner, ...losers] = ranked
+      let mergedConfidence = winner.confidence
+      let mergedImportance = winner.importance
+      for (const memory of losers) {
+        mergedConfidence = Math.max(mergedConfidence, Math.min(1, 1 - ((1 - mergedConfidence) * (1 - memory.confidence))))
+        mergedImportance = Math.max(mergedImportance, memory.importance)
+        statements.push(this.db.prepare('UPDATE memories SET is_active = 0, normalized_content = NULL WHERE id = ? AND is_active = 1').bind(memory.id))
+      }
+      if (losers.length || winner.normalizedContent !== normalized || winner.confidence !== mergedConfidence || winner.importance !== mergedImportance) {
+        statements.push(this.db.prepare('UPDATE memories SET normalized_content = ?, importance = ?, confidence = ? WHERE id = ? AND is_active = 1').bind(normalized, mergedImportance, mergedConfidence, winner.id))
+      }
+    }
+    if (statements.length) await this.db.batch(statements)
+  }
   private insert(input: MemoryCreateInput, requirePreviousChange = false): D1PreparedStatement {
     const value = withDefaults(input)
     const values = requirePreviousChange ? 'SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1 WHERE changes() > 0' : 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
     return this.db.prepare(`INSERT INTO memories (id, memory_type, content, importance, category, sensitivity, confidence, access_count, last_accessed_at, superseded_memory_id, normalized_content, source_conversation_id, source_message_id, created_at, updated_at, is_active) ${values}`).bind(value.id, value.memoryType, value.content, value.importance, value.category, value.sensitivity, value.confidence, value.accessCount, value.lastAccessedAt, value.supersededMemoryId, value.normalizedContent, value.sourceConversationId, value.sourceMessageId, value.now, value.now)
   }
-  async create(input: MemoryCreateInput): Promise<void> { await this.insert(input).run() }
+  async create(input: MemoryCreateInput): Promise<void> { await this.prepareNormalizedInvariant(); await this.insert(input).run() }
   async list(activeOnly = false): Promise<Memory[]> { const sql = activeOnly ? 'SELECT * FROM memories WHERE is_active = 1 ORDER BY importance DESC, updated_at DESC' : 'SELECT * FROM memories ORDER BY importance DESC, updated_at DESC'; return (await this.db.prepare(sql).all<MemoryRow>()).results.map(map) }
-  async listCandidates(category: MemoryCategory, memoryType: string, requestedLimit = 12): Promise<Memory[]> { const limit = Math.max(1, Math.min(12, Math.floor(requestedLimit))); return (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 AND category = ? AND memory_type = ? ORDER BY importance DESC, updated_at DESC LIMIT ?').bind(category, memoryType, limit).all<MemoryRow>()).results.map(map) }
+  async listCandidates(category: MemoryCategory, memoryType: string, requestedLimit = 100): Promise<Memory[]> { const limit = Math.max(1, Math.min(100, Math.floor(requestedLimit))); return (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 AND category = ? AND memory_type = ? ORDER BY importance DESC, updated_at DESC LIMIT ?').bind(category, memoryType, limit).all<MemoryRow>()).results.map(map) }
   async get(id: string): Promise<Memory | null> { const row = await this.db.prepare('SELECT * FROM memories WHERE id = ?').bind(id).first<MemoryRow>(); return row ? map(row) : null }
   async reinforce(id: string, input: { confidence: number; importance: number; normalizedContent?: string; now: string }): Promise<boolean> {
     validateScore('confidence', input.confidence)
     validateScore('importance', input.importance)
+    await this.prepareNormalizedInvariant()
     const result = await this.db.prepare('UPDATE memories SET confidence = MAX(confidence, MIN(1, 1 - ((1 - confidence) * (1 - ?)))), importance = MAX(importance, ?), normalized_content = COALESCE(normalized_content, ?), updated_at = ? WHERE id = ? AND is_active = 1').bind(input.confidence, input.importance, input.normalizedContent ?? null, input.now, id).run()
     return (result.meta.changes ?? 0) > 0
   }
-  async insertOrReinforce(input: MemoryCreateInput, normalizedContent: string): Promise<void> {
+  async insertOrReinforce(input: MemoryCreateInput): Promise<void> {
     validateScore('confidence', input.confidence ?? 0.5)
     validateScore('importance', input.importance)
-    const value = withDefaults({ ...input, normalizedContent })
+    await this.prepareNormalizedInvariant()
+    const value = withDefaults(input)
     await this.db.prepare('INSERT INTO memories (id, memory_type, content, importance, category, sensitivity, confidence, access_count, last_accessed_at, superseded_memory_id, normalized_content, source_conversation_id, source_message_id, created_at, updated_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(normalized_content) WHERE is_active = 1 AND normalized_content IS NOT NULL DO UPDATE SET confidence = MAX(memories.confidence, MIN(1, 1 - ((1 - memories.confidence) * (1 - excluded.confidence)))), importance = MAX(memories.importance, excluded.importance), updated_at = excluded.updated_at').bind(value.id, value.memoryType, value.content, value.importance, value.category, value.sensitivity, value.confidence, value.accessCount, value.lastAccessedAt, value.supersededMemoryId, value.normalizedContent, value.sourceConversationId, value.sourceMessageId, value.now, value.now).run()
   }
   async replace(old: Memory, input: MemoryCreateInput): Promise<boolean> {
+    await this.prepareNormalizedInvariant()
     const current = await this.get(old.id)
     const category = input.category ?? 'about_user'
     if (!current?.isActive || current.category !== category || current.memoryType !== input.memoryType || input.supersededMemoryId !== current.id) return false
@@ -71,7 +97,7 @@ export class MemoryRepository {
     ])
     return (results[0].meta.changes ?? 0) > 0 && (results[1].meta.changes ?? 0) > 0
   }
-  async update(id: string, input: { content: string; importance: number; isActive: boolean; now: string }): Promise<boolean> { const result = await this.db.prepare('UPDATE memories SET content = ?, importance = ?, normalized_content = NULL, is_active = ?, updated_at = ? WHERE id = ?').bind(input.content, input.importance, input.isActive ? 1 : 0, input.now, id).run(); return (result.meta.changes ?? 0) > 0 }
+  async update(id: string, input: { content: string; importance: number; isActive: boolean; now: string }): Promise<boolean> { await this.prepareNormalizedInvariant(); const normalizedContent = input.isActive ? canonicalizeMemoryContent(input.content) : null; const result = await this.db.prepare('UPDATE memories SET content = ?, importance = ?, normalized_content = ?, is_active = ?, updated_at = ? WHERE id = ?').bind(input.content, input.importance, normalizedContent, input.isActive ? 1 : 0, input.now, id).run(); return (result.meta.changes ?? 0) > 0 }
   async delete(id: string): Promise<boolean> { const result = await this.db.prepare('DELETE FROM memories WHERE id = ?').bind(id).run(); return (result.meta.changes ?? 0) > 0 }
   async clear(): Promise<void> { await this.db.prepare('DELETE FROM memories').run() }
 }

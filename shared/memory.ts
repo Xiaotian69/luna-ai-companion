@@ -6,6 +6,10 @@ export const memorySensitivitySchema = z.enum(['normal', 'personal', 'intimate',
 export type MemoryCategory = z.infer<typeof memoryCategorySchema>
 export type MemorySensitivity = z.infer<typeof memorySensitivitySchema>
 
+export function canonicalizeMemoryContent(value: string): string {
+  return value.normalize('NFKC').toLowerCase().replace(/[\s。！？,.!?，]/g, '')
+}
+
 const memoryCandidateBase = {
   memory_type: z.string().min(1).max(40).default('other'),
   content: z.string().trim().max(500).default(''),
