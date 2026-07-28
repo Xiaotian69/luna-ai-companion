@@ -4,12 +4,14 @@ import { MAX_MEMORY_BACKUP_BYTES } from '../../../shared/memory-backup'
 const repository = vi.hoisted(() => ({
   list: vi.fn(),
   restore: vi.fn(),
+  restoreMany: vi.fn(),
 }))
 
 vi.mock('../../_lib/repositories/memories', () => ({
   MemoryRepository: class {
     list = repository.list
     restore = repository.restore
+    restoreMany = repository.restoreMany
   },
 }))
 
@@ -69,6 +71,7 @@ function backup(memories: unknown[] = [memory]) {
 beforeEach(() => {
   repository.list.mockReset()
   repository.restore.mockReset()
+  repository.restoreMany.mockReset()
 })
 
 describe('GET /api/memories/export', () => {
@@ -99,7 +102,7 @@ describe('GET /api/memories/export', () => {
       id: `memory-${index}`,
       content: `记${'忆'.repeat(499)}`,
     })))
-    repository.restore.mockResolvedValue('skipped')
+    repository.restoreMany.mockResolvedValue(['skipped'])
 
     const exported = await onRequestGet({ env: { DB: {} } } as never) as Response
     const document = await exported.json()
@@ -133,6 +136,7 @@ describe('POST /api/memories/import', () => {
 
     expect(response.status).toBe(400)
     expect(repository.restore).not.toHaveBeenCalled()
+    expect(repository.restoreMany).not.toHaveBeenCalled()
   })
 
   it('validates the entire document before any database write', async () => {
@@ -141,6 +145,7 @@ describe('POST /api/memories/import', () => {
 
     expect(response.status).toBe(400)
     expect(repository.restore).not.toHaveBeenCalled()
+    expect(repository.restoreMany).not.toHaveBeenCalled()
   })
 
   it('rejects an oversized request body before any database write', async () => {
@@ -151,10 +156,63 @@ describe('POST /api/memories/import', () => {
 
     expect(response.status).toBe(413)
     expect(repository.restore).not.toHaveBeenCalled()
+    expect(repository.restoreMany).not.toHaveBeenCalled()
+  })
+
+  it.each([undefined, '16'])('cancels an oversized streamed body early with Content-Length %s', async (contentLength) => {
+    const cancel = vi.fn()
+    let pullCount = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pullCount += 1
+        if (pullCount === 1) controller.enqueue(new Uint8Array(MAX_MEMORY_BACKUP_BYTES))
+        else if (pullCount === 2) controller.enqueue(new Uint8Array(1))
+        else controller.close()
+      },
+      cancel,
+    })
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    if (contentLength) headers.set('Content-Length', contentLength)
+    const request = new Request('https://example.test/api/memories/import', {
+      method: 'POST', headers, body: stream, duplex: 'half',
+    } as RequestInit & { duplex: 'half' })
+
+    const response = await onRequestPost({ request, env: { DB: {} } } as never) as Response
+
+    expect(response.status).toBe(413)
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(repository.restoreMany).not.toHaveBeenCalled()
+  })
+
+  it('returns 413 without waiting for a stalled stream cancellation promise', async () => {
+    let pullCount = 0
+    const cancel = vi.fn(() => new Promise<void>(() => undefined))
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pullCount += 1
+        controller.enqueue(new Uint8Array(pullCount === 1 ? MAX_MEMORY_BACKUP_BYTES : 1))
+      },
+      cancel,
+    })
+    const request = new Request('https://example.test/api/memories/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' })
+
+    const outcome = await Promise.race([
+      onRequestPost({ request, env: { DB: {} } } as never),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 100)),
+    ])
+
+    expect(outcome).toBeInstanceOf(Response)
+    expect((outcome as Response).status).toBe(413)
+    expect(cancel).toHaveBeenCalledOnce()
   })
 
   it('deduplicates active and inactive canonical matches within one document', async () => {
-    repository.restore.mockResolvedValue('created')
+    repository.restoreMany.mockResolvedValue(['created'])
     const duplicate = { ...memory, content: ' 用户喜欢简洁界面。 ', isActive: false }
 
     const response = await onRequestPost({
@@ -163,17 +221,18 @@ describe('POST /api/memories/import', () => {
     } as never) as Response
 
     expect(response.status).toBe(200)
-    expect(repository.restore).toHaveBeenCalledTimes(1)
+    expect(repository.restoreMany).toHaveBeenCalledTimes(1)
+    expect(repository.restoreMany.mock.calls[0][0]).toHaveLength(1)
     expect(await response.json()).toEqual({ created: 1, reinforced: 0, skipped: 1 })
   })
 
   it('uses a deterministic restore ID so repeated imports can be idempotent', async () => {
     const seen = new Set<string>()
-    repository.restore.mockImplementation(async (item: { id: string }) => {
+    repository.restoreMany.mockImplementation(async (items: Array<{ id: string }>) => items.map((item) => {
       if (seen.has(item.id)) return 'skipped'
       seen.add(item.id)
       return 'created'
-    })
+    }))
     const input = { confirmation: true, backup: backup() }
 
     const first = await onRequestPost({ request: post(input), env: { DB: {} } } as never) as Response
@@ -181,7 +240,7 @@ describe('POST /api/memories/import', () => {
 
     expect(await first.json()).toEqual({ created: 1, reinforced: 0, skipped: 0 })
     expect(await second.json()).toEqual({ created: 0, reinforced: 0, skipped: 1 })
-    expect(repository.restore.mock.calls[0][0].id).toBe(repository.restore.mock.calls[1][0].id)
-    expect(repository.restore.mock.calls[0][0]).toMatchObject({ sourceConversationId: null, sourceMessageId: null })
+    expect(repository.restoreMany.mock.calls[0][0][0].id).toBe(repository.restoreMany.mock.calls[1][0][0].id)
+    expect(repository.restoreMany.mock.calls[0][0][0]).toMatchObject({ sourceConversationId: null, sourceMessageId: null })
   })
 })

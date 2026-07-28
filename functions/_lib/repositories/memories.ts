@@ -102,15 +102,8 @@ export class MemoryRepository {
     return this.db.prepare(`INSERT INTO memories (id, memory_type, content, importance, category, sensitivity, confidence, access_count, last_accessed_at, superseded_memory_id, normalized_content, source_conversation_id, source_message_id, created_at, updated_at, is_active) ${values}`).bind(value.id, value.memoryType, value.content, value.importance, value.category, value.sensitivity, value.confidence, value.accessCount, value.lastAccessedAt, value.supersededMemoryId, value.normalizedContent, value.sourceConversationId, value.sourceMessageId, value.now, value.now)
   }
   async create(input: MemoryCreateInput): Promise<void> { await this.prepareNormalizedInvariant(); await this.insert(input).run() }
-  async restore(input: MemoryRestoreInput): Promise<'created' | 'skipped'> {
-    validateScore('confidence', input.confidence)
-    validateScore('importance', input.importance)
-    if (!Number.isInteger(input.accessCount) || input.accessCount < 0) throw new RangeError('accessCount must be a non-negative integer')
-    await this.prepareNormalizedInvariant()
-    const normalizedContent = canonicalizeMemoryContent(input.content)
-    const legacy = await this.db.prepare('SELECT content FROM memories WHERE normalized_content IS NULL').all<{ content: string }>()
-    if (legacy.results.some((memory) => canonicalizeMemoryContent(memory.content) === normalizedContent)) return 'skipped'
-    const result = await this.db.prepare(`INSERT INTO memories (
+  private restoreStatement(input: MemoryRestoreInput, normalizedContent: string): D1PreparedStatement {
+    return this.db.prepare(`INSERT INTO memories (
       id, memory_type, content, importance, category, sensitivity, confidence, access_count,
       last_accessed_at, superseded_memory_id, normalized_content, source_conversation_id,
       source_message_id, created_at, updated_at, is_active
@@ -125,8 +118,32 @@ export class MemoryRepository {
       input.confidence, input.accessCount, input.lastAccessedAt, normalizedContent,
       input.createdAt, input.updatedAt, input.isActive ? 1 : 0,
       input.id, normalizedContent, input.content,
-    ).run()
-    return (result.meta.changes ?? 0) > 0 ? 'created' : 'skipped'
+    )
+  }
+  async restoreMany(inputs: MemoryRestoreInput[]): Promise<Array<'created' | 'skipped'>> {
+    for (const input of inputs) {
+      validateScore('confidence', input.confidence)
+      validateScore('importance', input.importance)
+      if (!Number.isInteger(input.accessCount) || input.accessCount < 0) throw new RangeError('accessCount must be a non-negative integer')
+    }
+    if (!inputs.length) return []
+    await this.prepareNormalizedInvariant()
+    const legacy = await this.db.prepare('SELECT content FROM memories WHERE normalized_content IS NULL').all<{ content: string }>()
+    const legacyContent = new Set(legacy.results.map((memory) => canonicalizeMemoryContent(memory.content)))
+    const results: Array<'created' | 'skipped'> = inputs.map(() => 'skipped')
+    const pending = inputs.flatMap((input, index) => {
+      const normalizedContent = canonicalizeMemoryContent(input.content)
+      return legacyContent.has(normalizedContent) ? [] : [{ index, input, normalizedContent }]
+    })
+    for (let offset = 0; offset < pending.length; offset += 50) {
+      const chunk = pending.slice(offset, offset + 50)
+      const batch = await this.db.batch(chunk.map((item) => this.restoreStatement(item.input, item.normalizedContent)))
+      batch.forEach((result, index) => { results[chunk[index].index] = (result.meta.changes ?? 0) > 0 ? 'created' : 'skipped' })
+    }
+    return results
+  }
+  async restore(input: MemoryRestoreInput): Promise<'created' | 'skipped'> {
+    return (await this.restoreMany([input]))[0] ?? 'skipped'
   }
   async list(activeOnly = false): Promise<Memory[]> { const sql = activeOnly ? 'SELECT * FROM memories WHERE is_active = 1 ORDER BY importance DESC, updated_at DESC' : 'SELECT * FROM memories ORDER BY importance DESC, updated_at DESC'; return (await this.db.prepare(sql).all<MemoryRow>()).results.map(map) }
   async listForRetrieval(query: string, requestedLimit = 100): Promise<Memory[]> {

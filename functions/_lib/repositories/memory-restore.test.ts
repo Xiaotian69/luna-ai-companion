@@ -18,64 +18,72 @@ const input = {
   isActive: false,
 }
 
-describe('MemoryRepository.restore', () => {
+function harness(changes: number, legacy: Array<{ content: string }> = []) {
+  const statements: Array<{ sql: string; bindings: unknown[]; run: ReturnType<typeof vi.fn> }> = []
+  const db = {
+    prepare: vi.fn((sql: string) => {
+      if (sql === 'SELECT content FROM memories WHERE normalized_content IS NULL') return { all: vi.fn(async () => ({ results: legacy })) }
+      const entry = { sql, bindings: [] as unknown[], run: vi.fn() }
+      statements.push(entry)
+      const statement = {
+        bind: vi.fn((...bindings: unknown[]) => { entry.bindings = bindings; return statement }),
+        run: entry.run,
+      }
+      return statement
+    }),
+    batch: vi.fn(async (batch: unknown[]) => batch.map(() => ({ meta: { changes } }))),
+  }
+  const repository = new MemoryRepository(db as unknown as D1Database)
+  const prepareInvariant = vi.spyOn(repository, 'prepareNormalizedInvariant').mockResolvedValue()
+  return { db, repository, prepareInvariant, statements }
+}
+
+describe('MemoryRepository restore', () => {
   it.each([
     { changes: 1, expected: 'created' },
     { changes: 0, expected: 'skipped' },
-  ])('reports $expected from an atomic duplicate-safe insert', async ({ changes, expected }) => {
-    let sql = ''
-    const bindings: unknown[] = []
-    const run = vi.fn(async () => ({ meta: { changes } }))
-    const statement = {
-      bind: vi.fn((...values: unknown[]) => { bindings.push(...values); return statement }),
-      all: vi.fn(async () => ({ results: [] })),
-      run,
-    }
-    const db = { prepare: vi.fn((value: string) => { sql = value; return statement }) }
-    const repository = new MemoryRepository(db as unknown as D1Database)
-    const prepareInvariant = vi.spyOn(repository, 'prepareNormalizedInvariant').mockResolvedValue()
+  ])('reports $expected from a batched duplicate-safe insert', async ({ changes, expected }) => {
+    const { db, repository, prepareInvariant, statements } = harness(changes)
 
     await expect(repository.restore(input)).resolves.toBe(expected)
+
     expect(prepareInvariant).toHaveBeenCalledOnce()
-    expect(sql).toContain('INSERT INTO memories')
-    expect(sql).toContain('NOT EXISTS')
-    expect(sql).toContain('normalized_content')
-    expect(bindings).not.toContain('private-conversation-id')
+    expect(db.batch).toHaveBeenCalledOnce()
+    expect(statements[0].sql).toContain('INSERT INTO memories')
+    expect(statements[0].sql).toContain('NOT EXISTS')
+    expect(statements[0].sql).toContain('normalized_content')
+    expect(statements[0].bindings).not.toContain('private-conversation-id')
+    expect(statements[0].run).not.toHaveBeenCalled()
   })
 
-  it('skips an existing inactive legacy memory with canonically equivalent content', async () => {
-    const insert = vi.fn()
-    let prepared = 0
-    const db = {
-      prepare: vi.fn(() => {
-        prepared += 1
-        if (prepared === 1) return { all: vi.fn(async () => ({ results: [{ content: ' 用户喜欢简洁界面。 ' }] })) }
-        return { bind: vi.fn(() => ({ run: insert })) }
-      }),
-    }
-    const repository = new MemoryRepository(db as unknown as D1Database)
-    vi.spyOn(repository, 'prepareNormalizedInvariant').mockResolvedValue()
+  it.each(['inactive', 'active'])('skips an %s legacy memory with canonically equivalent content', async () => {
+    const { db, repository, prepareInvariant, statements } = harness(1, [{ content: ' 用户喜欢简洁界面。 ' }])
 
     await expect(repository.restore(input)).resolves.toBe('skipped')
-    expect(insert).not.toHaveBeenCalled()
-  })
 
-  it('skips an active legacy memory with canonically equivalent content after invariant preparation', async () => {
-    const insert = vi.fn()
-    let prepared = 0
-    const db = {
-      prepare: vi.fn(() => {
-        prepared += 1
-        if (prepared === 1) return { all: vi.fn(async () => ({ results: [{ content: ' 用户喜欢简洁界面。 ' }] })) }
-        return { bind: vi.fn(() => ({ run: insert })) }
-      }),
-    }
-    const repository = new MemoryRepository(db as unknown as D1Database)
-    const prepareInvariant = vi.spyOn(repository, 'prepareNormalizedInvariant').mockResolvedValue()
-
-    await expect(repository.restore(input)).resolves.toBe('skipped')
     expect(prepareInvariant).toHaveBeenCalledOnce()
     expect(db.prepare).toHaveBeenCalledWith('SELECT content FROM memories WHERE normalized_content IS NULL')
-    expect(insert).not.toHaveBeenCalled()
+    expect(db.batch).not.toHaveBeenCalled()
+    expect(statements).toHaveLength(0)
+  })
+
+  it('restores 1000 entries with one invariant, one legacy scan, and at most 20 bounded batches', async () => {
+    const { db, repository, prepareInvariant, statements } = harness(1)
+    const inputs = Array.from({ length: 1_000 }, (_, index) => ({
+      ...input,
+      id: `restore-${index}`,
+      content: `用户喜欢简洁界面 ${index}`,
+    }))
+
+    const results = await repository.restoreMany(inputs)
+
+    expect(results).toHaveLength(1_000)
+    expect(results.every((result) => result === 'created')).toBe(true)
+    expect(prepareInvariant).toHaveBeenCalledOnce()
+    expect(db.prepare.mock.calls.filter(([sql]) => sql === 'SELECT content FROM memories WHERE normalized_content IS NULL')).toHaveLength(1)
+    expect(db.batch).toHaveBeenCalledTimes(20)
+    expect(db.batch.mock.calls.every(([batch]) => batch.length <= 50)).toBe(true)
+    expect(statements).toHaveLength(1_000)
+    expect(statements.every((statement) => statement.run.mock.calls.length === 0)).toBe(true)
   })
 })

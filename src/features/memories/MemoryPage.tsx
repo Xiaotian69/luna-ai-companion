@@ -1,5 +1,6 @@
 import { Download, PauseCircle, PlayCircle, Save, Trash2, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { MAX_MEMORY_BACKUP_BYTES } from '../../../shared/memory-backup'
 import { api } from '../../lib/api'
 
 interface Memory {
@@ -87,6 +88,10 @@ export function MemoryPage() {
   const restoreBackup = async () => {
     if (!backupFile) return
     setBackupStatus(null)
+    if (backupFile.size > MAX_MEMORY_BACKUP_BYTES) {
+      setBackupStatus({ kind: 'error', message: '记忆备份文件过大（最大 2 MiB）。' })
+      return
+    }
     try {
       const backup = JSON.parse(await backupFile.text()) as unknown
       if (!confirm('恢复前会验证整份备份，并跳过重复记忆。确定继续吗？')) return

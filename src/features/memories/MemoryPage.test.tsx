@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryPage } from './MemoryPage'
+import { MAX_MEMORY_BACKUP_BYTES } from '../../../shared/memory-backup'
 
 const emptyList = () => new Response(JSON.stringify({ memories: [] }), {
   status: 200,
@@ -93,5 +94,23 @@ describe('MemoryPage', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3)
     const [, init] = vi.mocked(fetch).mock.calls[1]
     expect(JSON.parse(String(init?.body))).toMatchObject({ confirmation: true, backup: { schemaVersion: 1 } })
+  })
+
+  it('rejects an oversized backup before reading or confirming it', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.fn()
+    vi.stubGlobal('confirm', confirm)
+    render(<MemoryPage />)
+    await screen.findByText('高级操作')
+    const file = new File([new Uint8Array(MAX_MEMORY_BACKUP_BYTES + 1)], 'oversized.json', { type: 'application/json' })
+    const text = vi.spyOn(file, 'text')
+
+    fireEvent.change(screen.getByLabelText('记忆备份文件'), { target: { files: [file] } })
+    await user.click(screen.getByRole('button', { name: '恢复记忆备份' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('记忆备份文件过大')
+    expect(text).not.toHaveBeenCalled()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
   })
 })
