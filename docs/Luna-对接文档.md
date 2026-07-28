@@ -45,7 +45,7 @@ flowchart LR
 
 每轮按固定结构组装：基础安全人格 + 可编辑伴侣档案、关系状态、最多 8 条实际召回记忆、对话摘要、最近 24 条消息、本轮输入。未压缩历史估算超过 12,000 token 且可压缩消息至少 12 条时生成结构化摘要。
 
-记忆字段包括 `memoryType`、`content`、`importance`、`category`、`sensitivity`、`confidence`、`accessCount`、`lastAccessedAt`、`supersededMemoryId` 和启用状态。自动提取会阻止凭据、身份和支付内容；健康/亲密内容需要可信用户确认。规范化内容、唯一索引和条件更新共同处理重复、强化和冲突替换。
+记忆字段包括 `memoryType`、`content`、`importance`、`category`、`sensitivity`、`confidence`、`accessCount`、`lastAccessedAt`、`supersededMemoryId` 和启用状态。自动提取会阻止凭据、身份、支付、健康与亲密内容。服务层虽接受仅由可信调用方提供的 `confirmedSensitive`，但当前聊天 API 和界面没有暴露确认参数，因此这些敏感类别当前不会从聊天自动写入。记忆管理界面可编辑、启停和删除已有记忆；`POST /api/memories` 可手动新增普通长期记忆。规范化内容、唯一索引和条件更新共同处理重复、强化和冲突替换。
 
 召回先限制候选，再按关键词/分类、待续状态、重要度、时效和访问情况确定性排序，ID 负责稳定平局。若同时配置 `EMBEDDING_BASE_URL` 和 `EMBEDDING_MODEL`，会调用仅回环的 OpenAI 兼容 `/embeddings`；失败或未配置时始终使用确定性回退。
 
@@ -134,7 +134,7 @@ flowchart LR
 | `CHAT_PROVIDER` | `ollama|deepseek`，默认 `deepseek` |
 | `CHAT_BASE_URL` | 可选 HTTP(S)，禁止凭据、query、fragment |
 | `CHAT_MODEL` | 可选非空模型名 |
-| `CHAT_API_KEY` / `DEEPSEEK_API_KEY` | 云聊天至少一项可用；Ollama 不需要 |
+| `CHAT_API_KEY` / `DEEPSEEK_API_KEY` | 当前 DeepSeek 云 provider 至少一项可用；`CHAT_API_KEY` 是通用服务端替代字段，Ollama 不需要 |
 | `EMBEDDING_BASE_URL` + `EMBEDDING_MODEL` | 可选且需成对；客户端仅允许回环端点 |
 | `MINIMAX_API_KEY` | 可选云语音 |
 | `LOCAL_TTS_ENDPOINT` | 可选；本地只回环，云端只外部 HTTPS 公共 FQDN |

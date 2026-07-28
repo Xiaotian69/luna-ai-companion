@@ -6,7 +6,7 @@ Luna 是一个本地优先、可自托管、单用户、中文优先的 AI 伴�
 
 - 自定义伴侣档案会保存在 D1，并参与每轮上下文；角色始终明确自己是 AI。
 - 文本可选本机 Ollama 或云端 DeepSeek。本地模式失败会明确报错，绝不静默上传到云端；云端覆盖必须显式请求并确认。
-- 长期记忆包含分类、敏感度、置信度、访问与冲突替换元数据。凭据、身份和支付信息不自动保存，健康与亲密信息需要用户确认。
+- 长期记忆包含分类、敏感度、置信度、访问与冲突替换元数据。凭据、身份、支付、健康与亲密信息当前都不会自动保存；服务层保留可信确认能力，但聊天 API 和界面尚未提供这项确认流程。
 - 记忆按关键词/分类、待续状态、重要度、时效和使用情况确定性排序；可选本机 embedding，失败时仍有确定性回退。回复只展示真正注入上下文的“本次使用的记忆”。
 - 记忆可查看、编辑、启停、删除、清空，并可导出/恢复严格版本化 JSON 备份。
 - 语音默认使用浏览器系统语音；可选部署者配置的本地 TTS 端点或 MiniMax。MiniMax 不是运行必需项。
@@ -49,7 +49,7 @@ CHAT_MODEL=qwen3:4b
 | `APP_MODE` | 建议显式设置 | `local` 或 `cloud`；默认 `cloud` |
 | `CHAT_PROVIDER` | 可选 | `ollama` 或 `deepseek`；默认 `deepseek` |
 | `CHAT_BASE_URL` / `CHAT_MODEL` | Ollama 或自定义聊天配置时 | OpenAI 兼容端点与模型 |
-| `CHAT_API_KEY` | 非 DeepSeek 云聊天时按需 | 通用云聊天密钥；也可用下项 |
+| `CHAT_API_KEY` | 云聊天时可选 | 通用服务端密钥；可替代 `DEEPSEEK_API_KEY` 供当前 DeepSeek provider 使用 |
 | `DEEPSEEK_API_KEY` | DeepSeek 聊天时 | DeepSeek 服务端密钥 |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | 可选 | 仅接受回环地址的本机 OpenAI 兼容 embedding；两项需同时配置 |
 | `LOCAL_TTS_ENDPOINT` | 可选 | 本地模式仅回环 HTTP(S)；云端模式仅外部 HTTPS 公共 FQDN |

@@ -2,7 +2,7 @@
 
 ## Completed scope
 
-- Task 9 added explicit memory category, sensitivity, confidence, access, last-accessed, and supersession metadata. Credential, identity, and payment candidates are rejected; health and intimate candidates require trusted user confirmation. Duplicate reinforcement and conflict replacement use canonical content and repository-side guards.
+- Task 9 added explicit memory category, sensitivity, confidence, access, last-accessed, and supersession metadata. Credential, identity, and payment candidates are rejected. Health and intimate candidates require a trusted service argument, but the current chat API/UI never supplies or exposes it, so those categories are also blocked from automatic chat extraction in this release. Duplicate reinforcement and conflict replacement use canonical content and repository-side guards.
 - Task 10 added bounded, deterministic retrieval that combines keyword/category relevance, pending commitments, importance, recency, and prior use. A loopback-only local embedding endpoint is optional; deterministic fallback remains available when it is absent or fails.
 - Task 10 emits only memories actually injected into the model context. The chat UI keeps their safe display text under the collapsed `本次使用的记忆` disclosure instead of claiming that all candidates were used.
 - Task 11 added a strict, versioned memory backup document (`schemaVersion: 1`) and authenticated JSON download/restore endpoints.

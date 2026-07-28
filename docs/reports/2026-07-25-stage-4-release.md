@@ -6,7 +6,7 @@ The release candidate delivers the four planned stages:
 
 - Public single-user foundation: customizable companion identity and boundaries, authenticated Pages Functions, D1 persistence, responsive chat, summaries, limits, secret scanning, CI, MIT licensing, and third-party notices.
 - Hybrid local/cloud text: Ollama local mode and DeepSeek cloud mode use explicit provider configuration. Local failures are visible and never trigger silent cloud fallback; a cloud override requires a paired provider request and confirmation.
-- Privacy-aware memory: category, sensitivity, confidence, access and supersession metadata; deterministic sensitive-data blocking and trusted confirmation; race-safe normalization/deduplication/conflict handling; bounded deterministic retrieval with optional loopback embeddings.
+- Privacy-aware memory: category, sensitivity, confidence, access and supersession metadata; deterministic blocking of credential, identity, payment, health and intimate automatic saves; race-safe normalization/deduplication/conflict handling; bounded deterministic retrieval with optional loopback embeddings. The service retains trusted-confirmation parameters, but the current chat API/UI does not expose them, so this release does not claim a user-facing sensitive-memory confirmation flow.
 - Actual-use transparency and backup: only memories injected into the model context appear under the collapsed `本次使用的记忆` disclosure. Schema-v1 JSON export/restore is strict, confirmation-gated, duplicate-safe, limited to 1,000 items and a 2 MiB import envelope, and excludes sessions, credentials, conversations and messages.
 - Selectable speech: browser speech is the zero-configuration default. A deployment-configured local/external TTS endpoint and MiniMax are optional; server routes reject browser TTS, unsafe endpoint shapes, redirects, non-audio and oversized responses.
 - Release documentation: README and Chinese handoff now match current commands, providers, variables and API schema. Dedicated local, cloud and security guides document deployment and trust boundaries.
@@ -22,7 +22,7 @@ The audit found and fixed these stale claims:
 - The handoff pinned an obsolete local path, branch, commit, test count and DeepSeek-only architecture. It omitted companion/runtime/backup APIs, chat override fields, `usedMemories`, memory metadata and the speech `provider` field.
 - The old deployment checklist did not distinguish required authentication secrets from conditional chat and speech secrets, or explain the cloud TTS DNS/deployer boundary.
 
-Review remediation added the non-transactional restore/retry boundary, 2 MiB/1,000-item limits, server-only URL rule, cloud redirect/audio/size controls, exact public-fixture allowlist behavior, log/database/model/voice exclusions, and a private vulnerability-reporting path.
+Review remediation added the non-transactional restore/retry boundary, 2 MiB/1,000-item limits, server-only URL rule, cloud redirect/audio/size controls, exact public-fixture allowlist behavior, log/database/model/voice exclusions, and a private vulnerability-reporting path. A later documentation review also corrected an overstatement: health/intimate confirmation exists only as a trusted service capability and is not exposed by the current chat API/UI; those automatic saves remain blocked, and a user-facing confirmation interaction stays on the roadmap.
 
 ## Documentation command and link validation
 
