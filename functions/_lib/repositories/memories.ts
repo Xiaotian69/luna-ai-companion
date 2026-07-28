@@ -90,13 +90,14 @@ export class MemoryRepository {
     const limit = Math.max(1, Math.min(100, Math.floor(requestedLimit)))
     const terms = [...new Set(query.normalize('NFKC').toLowerCase().match(/[a-z0-9]+|[\p{Script=Han}]/gu) ?? [])].slice(0, 32)
     const categories = inferRelevantMemoryCategories(query)
-    const [ranked, pending] = await Promise.all([
-      this.db.prepare("SELECT * FROM memories WHERE is_active = 1 ORDER BY (SELECT COUNT(*) FROM json_each(?) terms WHERE instr(lower(memories.content), lower(CAST(terms.value AS TEXT))) > 0) DESC, CASE WHEN category IN (SELECT CAST(value AS TEXT) FROM json_each(?)) THEN 1 ELSE 0 END DESC, importance DESC, updated_at DESC, access_count DESC, id ASC LIMIT ?").bind(JSON.stringify(terms), JSON.stringify(categories), limit).all<MemoryRow>(),
+    const [keyword, category, pending] = await Promise.all([
+      this.db.prepare("SELECT * FROM memories WHERE is_active = 1 ORDER BY (SELECT COUNT(*) FROM json_each(?) terms WHERE instr(lower(memories.content), lower(CAST(terms.value AS TEXT))) > 0) DESC, importance DESC, updated_at DESC, access_count DESC, id ASC LIMIT ?").bind(JSON.stringify(terms), limit).all<MemoryRow>(),
+      this.db.prepare("SELECT * FROM memories WHERE is_active = 1 AND category IN (SELECT CAST(value AS TEXT) FROM json_each(?)) ORDER BY importance DESC, updated_at DESC, access_count DESC, id ASC LIMIT ?").bind(JSON.stringify(categories), limit).all<MemoryRow>(),
       this.db.prepare("SELECT * FROM memories WHERE is_active = 1 AND (category = 'commitment' OR lower(memory_type) LIKE '%pending%' OR lower(memory_type) LIKE '%todo%' OR lower(memory_type) LIKE '%reminder%') AND lower(content) NOT LIKE '%done%' AND lower(content) NOT LIKE '%completed%' AND lower(content) NOT LIKE '%resolved%' AND lower(content) NOT LIKE '%cancelled%' AND content NOT LIKE '%已完成%' AND content NOT LIKE '%完成了%' AND content NOT LIKE '%已解决%' AND content NOT LIKE '%已取消%' ORDER BY importance DESC, updated_at DESC, access_count DESC, id ASC LIMIT ?").bind(limit).all<MemoryRow>(),
     ])
     const unique = new Map<string, Memory>()
-    for (const memory of [...ranked.results, ...pending.results].map(map)) unique.set(memory.id, memory)
-    return [...unique.values()].slice(0, limit * 2)
+    for (const memory of [...keyword.results, ...category.results, ...pending.results].map(map)) unique.set(memory.id, memory)
+    return [...unique.values()].slice(0, limit * 3)
   }
   async listCandidates(category: MemoryCategory, memoryType: string, requestedLimit = 100): Promise<Memory[]> { const limit = Math.max(1, Math.min(100, Math.floor(requestedLimit))); return (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 AND category = ? AND memory_type = ? ORDER BY importance DESC, updated_at DESC LIMIT ?').bind(category, memoryType, limit).all<MemoryRow>()).results.map(map) }
   async markAccessed(ids: string[], now: string): Promise<void> { const selected = [...new Set(ids)].slice(0, 100); if (!selected.length) return; await this.db.prepare('UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE is_active = 1 AND id IN (SELECT value FROM json_each(?))').bind(now, JSON.stringify(selected)).run() }

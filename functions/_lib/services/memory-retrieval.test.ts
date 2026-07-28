@@ -27,6 +27,17 @@ function memory(id: string, patch: Partial<Memory> = {}): Memory {
   }
 }
 
+function rowFromMemory(value: Memory): Record<string, unknown> {
+  return {
+    id: value.id, memory_type: value.memoryType, content: value.content, importance: value.importance,
+    category: value.category, sensitivity: value.sensitivity, confidence: value.confidence,
+    access_count: value.accessCount, last_accessed_at: value.lastAccessedAt,
+    superseded_memory_id: value.supersededMemoryId, normalized_content: value.normalizedContent,
+    source_conversation_id: value.sourceConversationId, source_message_id: value.sourceMessageId,
+    created_at: value.createdAt, updated_at: value.updatedAt, is_active: value.isActive ? 1 : 0,
+  }
+}
+
 describe('memory retrieval', () => {
   it('ranks deterministically by relevance, importance, recency, use and pending status', async () => {
     const memories = [
@@ -124,12 +135,36 @@ describe('memory retrieval candidate repository', () => {
 
     await new MemoryRepository(db as unknown as D1Database).listForRetrieval('提醒我周末完成计划', 500)
 
-    expect(statements).toHaveLength(2)
-    expect(statements[0].sql).toContain('category IN')
-    expect(statements[0].bindings[1]).toContain('commitment')
+    expect(statements).toHaveLength(3)
     expect(statements[0].bindings.at(-1)).toBe(100)
-    expect(statements[1].sql).toContain("category = 'commitment'")
-    expect(statements[1].sql).toContain("lower(memory_type) LIKE '%pending%'")
-    expect(statements[1].bindings).toEqual([100])
+    expect(statements[1].sql).toContain('category IN')
+    expect(statements[1].bindings[0]).toContain('commitment')
+    expect(statements[1].bindings.at(-1)).toBe(100)
+    expect(statements[2].sql).toContain("category = 'commitment'")
+    expect(statements[2].sql).toContain("lower(memory_type) LIKE '%pending%'")
+    expect(statements[2].bindings).toEqual([100])
+  })
+
+  it('preserves a category match when weak keyword matches crowd the keyword channel', async () => {
+    const keywordRows = Array.from({ length: 100 }, (_, index) => rowFromMemory(memory(`keyword-${index}`, { content: `我 ${index}`, category: 'relationship', importance: 1 })))
+    const categoryMatch = memory('category-match', { content: '爵士乐', category: 'about_user', importance: 0 })
+    let channel = 0
+    const db = {
+      prepare: vi.fn(() => {
+        const current = channel
+        channel += 1
+        const statement = {
+          bind: vi.fn(() => statement),
+          all: vi.fn(async () => ({ results: current === 0 ? keywordRows : current === 1 ? [rowFromMemory(categoryMatch)] : [] })),
+        }
+        return statement
+      }),
+    }
+
+    const candidates = await new MemoryRepository(db as unknown as D1Database).listForRetrieval('我喜欢什么')
+    const selected = await retrieveMemories({ memories: candidates, query: '我喜欢什么', now, limit: 8 })
+
+    expect(candidates).toHaveLength(101)
+    expect(selected[0]?.id).toBe('category-match')
   })
 })

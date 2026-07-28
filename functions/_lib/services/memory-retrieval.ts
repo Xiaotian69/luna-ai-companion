@@ -3,7 +3,7 @@ import { inferRelevantMemoryCategories, isPendingMemory } from '../../../shared/
 import type { UsedMemoryMetadata } from '../../../shared/stream'
 import type { Memory } from '../repositories/types'
 
-const MAX_CANDIDATES = 100
+const MAX_CANDIDATES = 300
 const MAX_DISPLAY_CHARACTERS = 160
 
 export interface LocalMemoryEmbedder {
@@ -46,6 +46,11 @@ function recency(updatedAt: string, now: string): number {
   return 1 / (1 + (days / 30))
 }
 
+function usage(accessCount: number): number {
+  const count = Math.max(0, Number.isFinite(accessCount) ? accessCount : 0)
+  return count / (count + 5)
+}
+
 function cosine(left: number[], right: number[]): number {
   if (!left.length || left.length !== right.length) return 0
   let dot = 0
@@ -83,6 +88,7 @@ export async function retrieveMemories(input: RetrievalInput): Promise<Retrieved
       category: categoryRelevance(memory, relevantCategories),
       pending: Number(isPendingMemory(memory)),
       recent: recency(memory.updatedAt, input.now),
+      usage: usage(memory.accessCount),
     }))
     .sort((left, right) => right.relevance - left.relevance
       || right.category - left.category
@@ -102,15 +108,20 @@ export async function retrieveMemories(input: RetrievalInput): Promise<Retrieved
     }
   }
   return candidates
-    .map((item) => ({ ...item, semantic: semanticScores.get(item.memory.id) ?? 0 }))
+    .map((item) => {
+      const semantic = semanticScores.get(item.memory.id) ?? 0
+      const score = (semantic * 0.6) + (item.relevance * 0.55) + (item.category * 0.2) + (item.pending * 0.15) + (item.memory.importance * 0.05) + (item.recent * 0.03) + (item.usage * 0.02)
+      return { ...item, semantic, score }
+    })
     .filter((item) => item.semantic > 0.2 || item.relevance > 0 || item.category > 0 || item.pending > 0)
-    .sort((left, right) => right.semantic - left.semantic
+    .sort((left, right) => right.score - left.score
+      || right.semantic - left.semantic
       || right.relevance - left.relevance
       || right.category - left.category
       || right.pending - left.pending
       || right.memory.importance - left.memory.importance
       || right.recent - left.recent
-      || right.memory.accessCount - left.memory.accessCount
+      || right.usage - left.usage
       || left.memory.id.localeCompare(right.memory.id))
     .slice(0, limit)
     .map(({ memory }) => ({ ...memory, displayText: safeMemoryDisplayText(memory.content) }))
