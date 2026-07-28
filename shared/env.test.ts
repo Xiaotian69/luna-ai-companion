@@ -48,4 +48,9 @@ describe('parseEnv', () => {
   it('rejects loopback TTS endpoints in cloud mode', () => {
     expect(() => parseEnv({ ...valid, APP_MODE: 'cloud', LOCAL_TTS_ENDPOINT: 'https://localhost:8000/tts' })).toThrow()
   })
+
+  it('rejects IP literals and special-use suffixes in cloud mode', () => {
+    expect(() => parseEnv({ ...valid, APP_MODE: 'cloud', LOCAL_TTS_ENDPOINT: 'https://169.254.169.254/latest' })).toThrow()
+    expect(() => parseEnv({ ...valid, APP_MODE: 'cloud', LOCAL_TTS_ENDPOINT: 'https://voice.internal/tts' })).toThrow()
+  })
 })
