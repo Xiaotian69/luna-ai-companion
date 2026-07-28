@@ -39,8 +39,15 @@ describe('GET /api/voices', () => {
 
   it('reports MiniMax as unavailable without exposing configuration', async () => {
     const response = await getVoices({ request: new Request('https://example.test/api/voices?provider=minimax'), env: {} } as never) as Response
-    expect(response.status).toBe(503)
-    expect(JSON.stringify(await response.json())).not.toContain('API_KEY')
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ provider: 'minimax', configured: false, voices: [] })
+  })
+
+  it('uses APP_MODE when reporting local endpoint availability', async () => {
+    const cloud = await getVoices({ request: new Request('https://example.test/api/voices?provider=local'), env: { APP_MODE: 'cloud', LOCAL_TTS_ENDPOINT: 'https://tts.example.com/tts' } } as never) as Response
+    const cloudLoopback = await getVoices({ request: new Request('https://example.test/api/voices?provider=local'), env: { APP_MODE: 'cloud', LOCAL_TTS_ENDPOINT: 'https://localhost:8000/tts' } } as never) as Response
+    expect(await cloud.json()).toMatchObject({ configured: true })
+    expect(await cloudLoopback.json()).toMatchObject({ configured: false })
   })
 
   it('strictly rejects an unknown provider', async () => {
@@ -78,6 +85,14 @@ describe('POST /api/tts', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  it('allows an external HTTPS endpoint only in cloud mode', async () => {
+    const fetcher = vi.fn(async () => new Response(new Uint8Array([1]), { headers: { 'Content-Type': 'audio/mpeg' } }))
+    vi.stubGlobal('fetch', fetcher)
+    const response = await tts({ provider: 'local', text: 'hello', voiceId: 'default', speed: 1, pitch: 0, volume: 1 }, { APP_MODE: 'cloud', LOCAL_TTS_ENDPOINT: 'https://tts.example.com/tts' })
+    expect(response.status).toBe(200)
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
   it('requires MiniMax configuration only for MiniMax requests', async () => {
     const response = await tts({ provider: 'minimax', text: 'hello', voiceId: 'default', speed: 1, pitch: 0, volume: 1 }, {})
     expect(response.status).toBe(503)
@@ -105,6 +120,25 @@ describe('POST /api/tts', () => {
     const response = await tts({ provider: 'local', text: 'hello', voiceId: 'default', speed: 1, pitch: 0, volume: 1 }, { LOCAL_TTS_ENDPOINT: 'http://localhost:8000/tts' })
     expect(response.status).toBe(502)
     expect(cancelled).toBe(true)
+    expect(pulls).toBeLessThanOrEqual(12)
+  })
+
+  it('does not wait for a stalled stream cancellation after exceeding the limit', async () => {
+    let pulls = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1
+        controller.enqueue(new Uint8Array(1024 * 1024))
+      },
+      cancel: () => new Promise<void>(() => undefined),
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(stream, { headers: { 'Content-Type': 'audio/wav' } })))
+    const pending = tts({ provider: 'local', text: 'hello', voiceId: 'default', speed: 1, pitch: 0, volume: 1 }, { LOCAL_TTS_ENDPOINT: 'http://localhost:8000/tts' })
+    const response = await Promise.race([
+      pending,
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('stalled on reader.cancel')), 100)),
+    ])
+    expect(response.status).toBe(502)
     expect(pulls).toBeLessThanOrEqual(12)
   })
 

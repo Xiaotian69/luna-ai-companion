@@ -33,13 +33,13 @@ const applicationEnvSchema = z.object({
   DAILY_CHAT_LIMIT: positiveInt(100),
   DAILY_TTS_LIMIT: positiveInt(100),
   DAILY_TOKEN_LIMIT: positiveInt(500_000),
-}).superRefine((env, context) => {
-  if (env.LOCAL_TTS_ENDPOINT && !isSafeLocalTtsEndpoint(env.LOCAL_TTS_ENDPOINT, 'local')) {
+})
+
+const envSchema = z.intersection(chatProviderEnvSchema, applicationEnvSchema).superRefine((env, context) => {
+  if (env.LOCAL_TTS_ENDPOINT && !isSafeLocalTtsEndpoint(env.LOCAL_TTS_ENDPOINT, env.APP_MODE)) {
     context.addIssue({ code: 'custom', path: ['LOCAL_TTS_ENDPOINT'], message: 'Local TTS endpoint is not safe for this mode' })
   }
 })
-
-const envSchema = z.intersection(chatProviderEnvSchema, applicationEnvSchema)
 
 export type AppEnv = z.infer<typeof envSchema>
 

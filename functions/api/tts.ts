@@ -30,13 +30,13 @@ async function readBoundedAudio(response: Response, signal: AbortSignal): Promis
       if (result.done) break
       total += result.value.byteLength
       if (total > MAX_AUDIO_BYTES) {
-        await reader.cancel()
+        void reader.cancel().catch(() => undefined)
         throw new Error('LOCAL_TTS_TOO_LARGE')
       }
       chunks.push(result.value)
     }
   } catch (error) {
-    await reader.cancel().catch(() => undefined)
+    void reader.cancel().catch(() => undefined)
     throw error
   }
   if (total === 0) throw new Error('LOCAL_TTS_EMPTY_AUDIO')
@@ -81,7 +81,7 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env }) => {
     return apiError(400, 'INVALID_REQUEST', '语音参数无效')
   }
   if (input.provider === 'browser') return apiError(400, 'INVALID_SPEECH_PROVIDER', '浏览器语音不应发送到服务端')
-  if (input.provider === 'local' && (!env.LOCAL_TTS_ENDPOINT || !isSafeLocalTtsEndpoint(env.LOCAL_TTS_ENDPOINT, 'local'))) {
+  if (input.provider === 'local' && (!env.LOCAL_TTS_ENDPOINT || !isSafeLocalTtsEndpoint(env.LOCAL_TTS_ENDPOINT, env.APP_MODE ?? 'cloud'))) {
     return apiError(503, 'TTS_PROVIDER_UNAVAILABLE', '本地语音尚未安全配置')
   }
   if (input.provider === 'minimax' && !env.MINIMAX_API_KEY) {

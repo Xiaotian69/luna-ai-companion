@@ -39,4 +39,10 @@ describe('local TTS endpoint safety', () => {
   ])('rejects unsafe URL %s in local mode', (url) => {
     expect(isSafeLocalTtsEndpoint(url, 'local')).toBe(false)
   })
+
+  it('accepts only external HTTPS endpoints in cloud mode', () => {
+    expect(isSafeLocalTtsEndpoint('https://tts.example.com/v1/tts', 'cloud')).toBe(true)
+    expect(isSafeLocalTtsEndpoint('https://localhost:8000/tts', 'cloud')).toBe(false)
+    expect(isSafeLocalTtsEndpoint('http://tts.example.com/tts', 'cloud')).toBe(false)
+  })
 })

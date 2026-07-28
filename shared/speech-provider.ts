@@ -9,7 +9,8 @@ export function isSafeLocalTtsEndpoint(value: string, mode: 'cloud' | 'local' = 
   try {
     const url = new URL(value)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return false
-    return mode === 'local' ? loopbackHosts.has(url.hostname) : url.protocol === 'https:'
+    const loopback = loopbackHosts.has(url.hostname)
+    return mode === 'local' ? loopback : url.protocol === 'https:' && !loopback
   } catch {
     return false
   }

@@ -10,13 +10,13 @@ export const onRequestGet: LunaPagesFunction = async ({ request, env }) => {
 
   if (parsed.data === 'browser') return json({ provider: 'browser', configured: true, voices: [] })
   if (parsed.data === 'local') {
-    const configured = Boolean(env.LOCAL_TTS_ENDPOINT && isSafeLocalTtsEndpoint(env.LOCAL_TTS_ENDPOINT, 'local'))
+    const configured = Boolean(env.LOCAL_TTS_ENDPOINT && isSafeLocalTtsEndpoint(env.LOCAL_TTS_ENDPOINT, env.APP_MODE ?? 'cloud'))
     return json({
       provider: 'local', configured,
       voices: configured ? [{ id: 'default', name: '本地默认语音', description: '由本地 TTS 服务提供' }] : [],
     })
   }
-  if (!env.MINIMAX_API_KEY) return apiError(503, 'VOICE_PROVIDER_UNAVAILABLE', 'MiniMax 语音尚未配置')
+  if (!env.MINIMAX_API_KEY) return json({ provider: 'minimax', configured: false, voices: [] })
 
   try {
     return json({ provider: 'minimax', configured: true, voices: rankVoices(await new MiniMaxClient(env.MINIMAX_API_KEY).voices()) })

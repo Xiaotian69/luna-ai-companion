@@ -45,6 +45,7 @@ describe('speech provider settings', () => {
     render(<SettingsPage />)
     fireEvent.change(screen.getByLabelText('语音提供方'), { target: { value: 'minimax' } })
     await waitFor(() => expect(JSON.parse(localStorage.getItem('luna-voice-settings') ?? '{}')).toMatchObject({ provider: 'minimax' }))
+    expect(await screen.findByText('MiniMax 语音尚未配置。')).toBeInTheDocument()
   })
 
   it('previews with the selected provider settings', async () => {
