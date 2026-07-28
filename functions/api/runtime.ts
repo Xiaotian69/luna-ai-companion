@@ -52,17 +52,17 @@ export async function inspectRuntime(env: ChatProviderEnv, fetcher: typeof fetch
       const response = await fetcher.call(globalThis, `${config.baseUrl}/models`, { headers, signal: controller.signal })
       if (response.status === 401 || response.status === 403) return { ...unavailable, configured: false, reachable: true }
       if (response.status >= 500) return unavailable
-      if (!response.ok) return { ...unavailable, configured: false, reachable: true }
+      if (!response.ok) return config.provider === 'deepseek' ? unavailable : { ...unavailable, reachable: true }
 
       let body: unknown
       try {
         body = await response.json()
       } catch (error) {
         if (controller.signal.aborted) throw error
-        return { ...unavailable, reachable: true }
+        return config.provider === 'deepseek' ? unavailable : { ...unavailable, reachable: true }
       }
       const ids = modelIds(body)
-      if (!ids) return { ...unavailable, reachable: true }
+      if (!ids) return config.provider === 'deepseek' ? unavailable : { ...unavailable, reachable: true }
       return { ...unavailable, configured: ids.includes(config.model), reachable: true }
     })()
     const timeout = new Promise<never>((_resolve, reject) => {

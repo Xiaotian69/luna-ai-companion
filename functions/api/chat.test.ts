@@ -139,6 +139,33 @@ describe('GET /api/runtime', () => {
     expect(body).toMatchObject({ configured: false, reachable: true })
   })
 
+  it('keeps a rate-limited cloud provider configured but unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 429 })))
+
+    const { body } = await runtime(cloudEnv())
+
+    expect(body).toMatchObject({ configured: true, reachable: false })
+  })
+
+  it('does not report a cloud provider with invalid JSON as ready', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const { body } = await runtime(cloudEnv())
+
+    expect(body).toMatchObject({ configured: true, reachable: false })
+  })
+
+  it('does not report a cloud provider with malformed model data as ready', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [null] }), { status: 200 })))
+
+    const { body } = await runtime(cloudEnv())
+
+    expect(body).toMatchObject({ configured: true, reachable: false })
+  })
+
   it('reports a configured cloud provider network failure as unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network failed') }))
 
