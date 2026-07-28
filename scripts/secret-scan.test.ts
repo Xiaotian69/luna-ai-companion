@@ -19,6 +19,15 @@ describe('public repository safety scan', () => {
     expect(containsSecret(privateKeyHeader)).toBe(true)
   })
 
+  it('ignores only the two known public credential examples used by privacy tests', () => {
+    const publicOpenAiExample = ['sk', 'example1234567890'].join('-')
+    const publicAwsExample = ['AKIAIOSFODNN7', 'EXAMPLE'].join('')
+    const similarButUnknown = ['sk', 'example1234567891'].join('-')
+
+    expect(containsSecret(`${publicOpenAiExample}\n${publicAwsExample}`)).toBe(false)
+    expect(containsSecret(similarButUnknown)).toBe(true)
+  })
+
   it('rejects local data, model, voice, log, and visual draft paths', () => {
     expect(isForbiddenRepositoryPath('.wrangler/state/data.sqlite')).toBe(true)
     expect(isForbiddenRepositoryPath('models/qwen.gguf')).toBe(true)

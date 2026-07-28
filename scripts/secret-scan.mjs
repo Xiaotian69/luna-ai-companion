@@ -10,13 +10,21 @@ const keyPatterns = [
   /\bAKIA[A-Z0-9]{16}\b/,
 ]
 
+// Public documentation placeholders used by privacy tests. Keep these fragmented so
+// the scanner still detects every other credential-shaped value, including in history.
+const knownPublicFixtures = [
+  ['sk', 'example1234567890'].join('-'),
+  ['AKIAIOSFODNN7', 'EXAMPLE'].join(''),
+]
+
 const forbiddenDirectories = /(^|\/)(?:\.superpowers|\.wrangler|work|logs?)(?:\/|$)/i
 const forbiddenExtensions = /\.(?:sqlite(?:-wal|-shm)?|db|gguf|safetensors|onnx|wav|mp3|log|pem|key|p12|pfx)$/i
 const safeEnvironmentExamples = /^\.(?:env|dev\.vars)(?:\.[a-z0-9_-]+)*\.(?:example|sample|template)$/i
 const environmentFiles = /^\.(?:env|dev\.vars)(?:\.|$)/i
 
 export function containsSecret(content) {
-  return keyPatterns.some((pattern) => pattern.test(content))
+  const sanitized = knownPublicFixtures.reduce((value, fixture) => value.replaceAll(fixture, ''), content)
+  return keyPatterns.some((pattern) => pattern.test(sanitized))
 }
 
 export function isForbiddenRepositoryPath(file) {
