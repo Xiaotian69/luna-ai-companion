@@ -1,4 +1,5 @@
 import { LIMITS } from '../../../config/limits'
+import { inferRelevantMemoryCategories, isPendingMemory } from '../../../shared/memory'
 import type { UsedMemoryMetadata } from '../../../shared/stream'
 import type { Memory } from '../repositories/types'
 
@@ -33,19 +34,8 @@ function keywordRelevance(content: string, queryTerms: Set<string>): number {
   return overlap / queryTerms.size
 }
 
-function categoryRelevance(memory: Memory, query: string): number {
-  const rules: Record<Memory['category'], RegExp> = {
-    about_user: /喜欢|偏好|习惯|讨厌|爱好|我(?:是|在|有)|like|prefer|habit/i,
-    shared_experience: /一起|上次|曾经|记得|经历|共同|together|last time/i,
-    commitment: /答应|约定|计划|提醒|待办|还没|之后|明天|周末|promise|plan|remind|todo|pending/i,
-    relationship: /关系|称呼|边界|相处|信任|relationship|boundary|trust/i,
-  }
-  return rules[memory.category].test(query) ? 1 : 0
-}
-
-function isPending(memory: Memory): boolean {
-  if (memory.category !== 'commitment' && !/pending|todo|commitment|reminder/i.test(memory.memoryType)) return false
-  return !/已完成|完成了|已解决|已取消|done|completed|resolved|cancelled/i.test(memory.content)
+function categoryRelevance(memory: Memory, categories: Memory['category'][]): number {
+  return categories.includes(memory.category) ? 1 : 0
 }
 
 function recency(updatedAt: string, now: string): number {
@@ -84,13 +74,14 @@ export async function retrieveMemories(input: RetrievalInput): Promise<Retrieved
   const limit = Math.max(0, Math.min(LIMITS.relevantMemoryCount, Math.floor(input.limit ?? LIMITS.relevantMemoryCount)))
   if (!limit) return []
   const queryTerms = terms(input.query)
+  const relevantCategories = inferRelevantMemoryCategories(input.query)
   const candidates = input.memories
     .filter((memory) => memory.isActive)
     .map((memory) => ({
       memory,
       relevance: keywordRelevance(memory.content, queryTerms),
-      category: categoryRelevance(memory, input.query),
-      pending: Number(isPending(memory)),
+      category: categoryRelevance(memory, relevantCategories),
+      pending: Number(isPendingMemory(memory)),
       recent: recency(memory.updatedAt, input.now),
     }))
     .sort((left, right) => right.relevance - left.relevance

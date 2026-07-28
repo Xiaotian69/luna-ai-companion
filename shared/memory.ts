@@ -6,6 +6,22 @@ export const memorySensitivitySchema = z.enum(['normal', 'personal', 'intimate',
 export type MemoryCategory = z.infer<typeof memoryCategorySchema>
 export type MemorySensitivity = z.infer<typeof memorySensitivitySchema>
 
+const categoryQueryRules: Record<MemoryCategory, RegExp> = {
+  about_user: /喜欢|偏好|习惯|讨厌|爱好|我(?:是|在|有)|like|prefer|habit/i,
+  shared_experience: /一起|上次|曾经|记得|经历|共同|together|last time/i,
+  commitment: /答应|约定|计划|提醒|待办|还没|之后|明天|周末|promise|plan|remind|todo|pending/i,
+  relationship: /关系|称呼|边界|相处|信任|relationship|boundary|trust/i,
+}
+
+export function inferRelevantMemoryCategories(query: string): MemoryCategory[] {
+  return memoryCategorySchema.options.filter((category) => categoryQueryRules[category].test(query))
+}
+
+export function isPendingMemory(input: { category: MemoryCategory; memoryType: string; content: string }): boolean {
+  if (input.category !== 'commitment' && !/pending|todo|commitment|reminder/i.test(input.memoryType)) return false
+  return !/已完成|完成了|已解决|已取消|done|completed|resolved|cancelled/i.test(input.content)
+}
+
 export function canonicalizeMemoryContent(value: string): string {
   return value.normalize('NFKC').toLowerCase().replace(/[\s。！？,.!?，]/g, '')
 }

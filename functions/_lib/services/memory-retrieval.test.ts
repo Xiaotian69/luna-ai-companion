@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Memory } from '../repositories/types'
+import { MemoryRepository } from '../repositories/memories'
 import { createLocalMemoryEmbedder, retrieveMemories } from './memory-retrieval'
 
 const now = '2026-07-28T00:00:00.000Z'
@@ -103,5 +104,32 @@ describe('memory retrieval', () => {
     await expect(embedder?.embed(['query', 'memory'])).resolves.toEqual([[1, 0], [0, 1]])
     expect(String(fetcher.mock.calls[0][0])).toBe('http://127.0.0.1:11434/v1/embeddings')
     expect(createLocalMemoryEmbedder({ baseUrl: 'http://[::1]:11434/v1', model: 'nomic-embed-text', fetcher })).toBeDefined()
+  })
+})
+
+describe('memory retrieval candidate repository', () => {
+  it('builds separate bounded category-aware and pending candidate channels', async () => {
+    const statements: Array<{ sql: string; bindings: unknown[] }> = []
+    const db = {
+      prepare: vi.fn((sql: string) => {
+        const entry = { sql, bindings: [] as unknown[] }
+        statements.push(entry)
+        const statement = {
+          bind: vi.fn((...bindings: unknown[]) => { entry.bindings = bindings; return statement }),
+          all: vi.fn(async () => ({ results: [] })),
+        }
+        return statement
+      }),
+    }
+
+    await new MemoryRepository(db as unknown as D1Database).listForRetrieval('提醒我周末完成计划', 500)
+
+    expect(statements).toHaveLength(2)
+    expect(statements[0].sql).toContain('category IN')
+    expect(statements[0].bindings[1]).toContain('commitment')
+    expect(statements[0].bindings.at(-1)).toBe(100)
+    expect(statements[1].sql).toContain("category = 'commitment'")
+    expect(statements[1].sql).toContain("lower(memory_type) LIKE '%pending%'")
+    expect(statements[1].bindings).toEqual([100])
   })
 })
