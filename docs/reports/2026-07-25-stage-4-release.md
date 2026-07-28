@@ -35,14 +35,14 @@ Review remediation added the non-transactional restore/retry boundary, 2 MiB/1,0
 - `npm run dev*` and `ollama serve` were skipped because they intentionally start persistent servers. `winget install` was skipped because it changes the system; `ollama pull` was skipped because it downloads model weights. Ollama was not installed on this verification machine, so `check:local` and real generation/embedding smokes were not run.
 - Cloudflare login/project creation/remote migration/secret/deploy commands were not executed because they change external account state. No paid DeepSeek or MiniMax call and no external TTS request was made.
 
-## Fresh final verification — 2026-07-28
+## Task 13 pre-commit verification snapshot — 2026-07-28
 
-All commands ran in the isolated release worktree after documentation changes:
+The following commands ran in the isolated release worktree at commit `c40e118` plus the six uncommitted Task 13 documentation candidate files. These are timestamped audit snapshots, not a claim that their reachable-history count remains unchanged after later documentation commits:
 
 - `npm ci`: passed; 259 packages installed and 260 audited. npm reported **6 high-severity advisories**. No `npm audit fix --force` was run; compatibility-preserving remediation remains separate work.
 - `npm run db:migrate:local`: passed; Wrangler 4.111.0 reported no pending migrations.
-- `npm run check:secrets`: passed on the final pre-commit candidate; **151 current files** and **345 reachable history blobs**, zero findings.
-- Independent common credential-pattern history scan: **0 findings** across **53 commits** and **345 unique commit/blob-path pairs**. The scanner printed no matched values and would report only commit/file identifiers.
+- `npm run check:secrets`: passed on that pre-documentation-commit candidate; **151 candidate files** and **345 history blobs reachable from `c40e118`**, zero findings.
+- Independent common credential-pattern history scan: **0 findings** across the **53 commits reachable from `c40e118`** and **345 unique commit/blob-path pairs**. The scanner printed no matched values and would report only commit/file identifiers.
 - `npm run typecheck`: passed with zero TypeScript errors.
 - `npm run lint`: passed with zero ESLint errors.
 - `npm run test:run`: **35 test files, 309 tests passed**, zero failed.
@@ -50,7 +50,7 @@ All commands ran in the isolated release worktree after documentation changes:
 - `npm run test:e2e`: **5 passed, 1 intentionally skipped**, zero failed. The skip is the mobile-only composer assertion in the desktop project.
 - Repository Markdown relative-link scan, external-link syntax scan, environment/command audit and `git diff --check`: passed.
 
-The history count above describes the final tree before this documentation commit, as required for a report that is itself part of that commit. The post-commit scanner is run again before publication and may count additional reachable documentation blobs.
+After the sensitive-memory documentation remediation commit `92d83f8`, a separate post-remediation `npm run check:secrets` passed with **151 current files** and **358 reachable history blobs**, zero findings. Further documentation commits necessarily add reachable blobs, so their post-commit counts are reported separately in the Task 13 handoff rather than relabeling either snapshot as a timeless “current final” count.
 
 ## Licenses and repository exclusions
 

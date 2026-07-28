@@ -45,4 +45,6 @@ Luna 是单用户、自托管应用，不是多租户身份系统。`APP_PASSWOR
 
 ## 漏洞报告
 
-不要在公开 Issue 中粘贴漏洞利用细节、私人对话、数据库或密钥。仓库启用 GitHub Security Advisories 时优先使用私密 “Report a vulnerability”；否则通过仓库所有者公开的私密安全联系方式仅发送最小复现、受影响提交/版本和影响说明。先轮换可能泄露的凭据，再讨论修复；未经授权不要测试他人部署或真实账号。
+安全漏洞请使用 [GitHub private vulnerability report](https://github.com/Xiaotian69/luna-ai-companion/security/advisories/new)，仅提交最小复现、受影响提交/版本和影响说明，不要附带真实私人对话、数据库或密钥。维护者必须在公开发布前启用 GitHub private vulnerability reporting，并在 Task 14 验证该入口可用；在入口尚未启用时不要用公开 Issue 代替，也不要声称存在未公布的安全邮箱。
+
+公开 Issue 仅用于不含敏感信息的一般功能缺陷。若凭据可能泄露，先在供应商处轮换，再通过上述私密入口报告；未经授权不要测试他人部署或真实账号。
