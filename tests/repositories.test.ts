@@ -15,7 +15,7 @@ let db: D1Database
 beforeAll(async () => {
   mf = new Miniflare({ modules: true, script: 'export default { fetch(){ return new Response("ok") } }', d1Databases: { DB: 'luna-test' } })
   db = await mf.getD1Database('DB')
-  for (const file of ['0001_initial.sql', '0002_companion_profile.sql', '0003_memory_metadata.sql']) {
+  for (const file of ['0001_initial.sql', '0002_companion_profile.sql', '0003_memory_metadata.sql', '0004_memory_dedupe.sql']) {
     if (file === '0003_memory_metadata.sql') {
       await db.prepare("INSERT INTO memories (id, memory_type, content, importance, source_conversation_id, source_message_id, created_at, updated_at, is_active) VALUES ('legacy-memory', 'preference', '迁移前的记忆', 0.7, NULL, NULL, '2026-07-15T10:30:00Z', '2026-07-15T10:30:00Z', 1)").run()
     }
@@ -38,7 +38,10 @@ describe('D1 repositories', () => {
       accessCount: 0,
       lastAccessedAt: null,
       supersededMemoryId: null,
+      normalizedContent: null,
     })
+    await memories.reinforce('legacy-memory', { confidence: 0.7, importance: 0.7, normalizedContent: '迁移前的记忆', now: '2026-07-15T10:31:00Z' })
+    expect(await memories.get('legacy-memory')).toMatchObject({ normalizedContent: '迁移前的记忆' })
     await memories.delete('legacy-memory')
   })
 
@@ -106,6 +109,56 @@ describe('D1 repositories', () => {
 
     const reinforced = (await memories.list()).find((item) => item.id === 'reinforced')
     expect(reinforced).toMatchObject({ confidence: 1, importance: 0.9 })
+  })
+
+  it.each([
+    { confidence: -0.1, importance: 0.5 },
+    { confidence: 1.1, importance: 0.5 },
+    { confidence: 0.5, importance: -0.1 },
+    { confidence: 0.5, importance: 1.1 },
+    { confidence: Number.NaN, importance: 0.5 },
+  ])('rejects invalid reinforcement scores at runtime: %o', async ({ confidence, importance }) => {
+    const memories = new MemoryRepository(db)
+    const id = `invalid-reinforce-${String(confidence)}-${String(importance)}`
+    await memories.create({ id, memoryType: 'preference', content: id, importance: 0.5, confidence: 0.5, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:09:10Z' })
+    await expect(memories.reinforce(id, { confidence, importance, now: '2026-07-15T11:09:11Z' })).rejects.toBeInstanceOf(RangeError)
+    expect(await memories.get(id)).toMatchObject({ confidence: 0.5, importance: 0.5 })
+  })
+
+  it('rejects invalid scores before atomic insert-or-reinforce', async () => {
+    const memories = new MemoryRepository(db)
+    await expect(memories.insertOrReinforce({ id: 'invalid-upsert', memoryType: 'preference', content: '无效分数', importance: 0.5, confidence: -1, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:09:20Z' }, '无效分数')).rejects.toBeInstanceOf(RangeError)
+  })
+
+  it('atomically inserts or reinforces concurrent normalized duplicates', async () => {
+    const memories = new MemoryRepository(db)
+    const input = (id: string, confidence: number, importance: number) => ({ id, memoryType: 'preference', content: '用户喜欢电影配乐', importance, confidence, category: 'about_user' as const, sensitivity: 'normal' as const, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:09:30Z' })
+
+    await Promise.all([
+      memories.insertOrReinforce(input('dedupe-a', 0.5, 0.6), '用户喜欢电影配乐'),
+      memories.insertOrReinforce(input('dedupe-b', 0.8, 0.9), '用户喜欢电影配乐'),
+    ])
+
+    const duplicates = (await memories.list(true)).filter((item) => item.normalizedContent === '用户喜欢电影配乐')
+    expect(duplicates).toHaveLength(1)
+    expect(duplicates[0]).toMatchObject({ confidence: 0.9, importance: 0.9 })
+  })
+
+  it('bounds active conflict candidates to the requested category and memory type', async () => {
+    const memories = new MemoryRepository(db)
+    await Promise.all(Array.from({ length: 13 }, (_, index) => memories.create({ id: `bounded-${index}`, memoryType: 'preference', content: `候选 ${index}`, importance: 0.5, category: 'about_user', sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:09:45Z' })))
+    await memories.create({ id: 'bounded-unrelated', memoryType: 'preference', content: '无关关系记忆', importance: 1, category: 'relationship', sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:09:46Z' })
+
+    const candidates = await memories.listCandidates('about_user', 'preference', 12)
+    expect(candidates).toHaveLength(12)
+    expect(candidates.every((item) => item.category === 'about_user' && item.memoryType === 'preference' && item.isActive)).toBe(true)
+  })
+
+  it('clears derived normalization when a memory is manually edited', async () => {
+    const memories = new MemoryRepository(db)
+    await memories.insertOrReinforce({ id: 'manual-edit', memoryType: 'preference', content: '用户喜欢红色', importance: 0.7, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:09:50Z' }, '用户喜欢红色')
+    await memories.update('manual-edit', { content: '用户喜欢蓝色', importance: 0.7, isActive: true, now: '2026-07-15T11:09:51Z' })
+    expect(await memories.get('manual-edit')).toMatchObject({ content: '用户喜欢蓝色', normalizedContent: null })
   })
 
   it('atomically replaces a conflict and keeps only the new fact active with a trace', async () => {
