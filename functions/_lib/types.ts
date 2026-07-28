@@ -8,7 +8,8 @@ export interface Bindings {
   CHAT_API_KEY?: string
   EMBEDDING_BASE_URL?: string
   EMBEDDING_MODEL?: string
-  MINIMAX_API_KEY: string
+  MINIMAX_API_KEY?: string
+  LOCAL_TTS_ENDPOINT?: string
   APP_PASSWORD: string
   SESSION_SECRET: string
   ENVIRONMENT?: 'development' | 'test' | 'production'

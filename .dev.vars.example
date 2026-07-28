@@ -2,7 +2,11 @@
 DEEPSEEK_API_KEY=replace-with-your-deepseek-key
 
 # Optional cloud speech. Create your own key at https://platform.minimaxi.com/
-MINIMAX_API_KEY=replace-with-your-minimax-key
+MINIMAX_API_KEY=
+
+# Optional local TTS loopback endpoint, for example http://127.0.0.1:8000/tts.
+# It accepts POST JSON (text, voiceId, speed, pitch, volume) and returns audio/*.
+LOCAL_TTS_ENDPOINT=
 
 # Single-user login password. Use at least 8 characters.
 APP_PASSWORD=replace-with-a-strong-local-password

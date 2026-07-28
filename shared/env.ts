@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isSafeLocalTtsEndpoint } from './speech-provider'
 
 const positiveInt = (fallback: number) => z.coerce.number().int().positive().default(fallback)
 const httpUrl = z.string().trim().refine((value) => {
@@ -23,7 +24,8 @@ export const chatProviderEnvSchema = z.object({
 })
 
 const applicationEnvSchema = z.object({
-  MINIMAX_API_KEY: z.string().min(1),
+  MINIMAX_API_KEY: z.string().trim().min(1).optional(),
+  LOCAL_TTS_ENDPOINT: z.string().trim().optional(),
   APP_PASSWORD: z.string().min(8),
   SESSION_SECRET: z.string().min(32),
   DB: z.custom<Record<string, unknown>>((value) => typeof value === 'object' && value !== null),
@@ -31,6 +33,10 @@ const applicationEnvSchema = z.object({
   DAILY_CHAT_LIMIT: positiveInt(100),
   DAILY_TTS_LIMIT: positiveInt(100),
   DAILY_TOKEN_LIMIT: positiveInt(500_000),
+}).superRefine((env, context) => {
+  if (env.LOCAL_TTS_ENDPOINT && !isSafeLocalTtsEndpoint(env.LOCAL_TTS_ENDPOINT, 'local')) {
+    context.addIssue({ code: 'custom', path: ['LOCAL_TTS_ENDPOINT'], message: 'Local TTS endpoint is not safe for this mode' })
+  }
 })
 
 const envSchema = z.intersection(chatProviderEnvSchema, applicationEnvSchema)

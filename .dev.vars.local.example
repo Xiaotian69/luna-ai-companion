@@ -9,8 +9,13 @@ CHAT_API_KEY=
 EMBEDDING_BASE_URL=
 EMBEDDING_MODEL=
 
-# Speech remains optional. Leave this safe placeholder unless you enable cloud speech.
-MINIMAX_API_KEY=replace-with-your-minimax-key
+# Optional local TTS. The endpoint must be loopback HTTP(S), with no credentials,
+# query, or fragment. It receives POST JSON: text, voiceId, speed, pitch, volume,
+# and must return a bounded audio/* response. Browser speech needs no endpoint.
+LOCAL_TTS_ENDPOINT=
+
+# Optional cloud speech enhancement. Leave blank for browser or local speech.
+MINIMAX_API_KEY=
 
 # Replace these local-only placeholders before use. Never commit the copied file.
 APP_PASSWORD=replace-with-a-strong-local-password
