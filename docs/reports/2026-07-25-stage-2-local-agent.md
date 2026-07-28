@@ -23,7 +23,7 @@
 
 ## Stage 2 Verification
 
-- Secret scan: passed; 132 current repository files and 211 reachable Git-history blobs checked, zero findings.
+- Pre-commit candidate secret scan on 2026-07-28: passed; 132 candidate repository files and 211 blobs reachable before the Stage 2 commit checked, zero findings. This time-anchored count is not a claim about later HEAD history.
 - TypeScript: passed with zero errors.
 - ESLint: passed with zero errors.
 - Vitest/Miniflare: 28 test files, 98 tests passed, zero failed.

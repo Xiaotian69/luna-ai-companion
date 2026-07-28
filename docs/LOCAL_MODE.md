@@ -4,12 +4,19 @@
 
 ## 安装
 
-要求 Node.js 24+。Windows 可以通过 WinGet 安装 Ollama；macOS/Linux 请使用 [Ollama 官方下载页](https://ollama.com/download) 的对应安装方式。
+要求 Node.js 24+。Windows 可以通过 WinGet 安装 Ollama：
 
 ```powershell
 winget install --id Ollama.Ollama -e
 npm ci
 Copy-Item .dev.vars.local.example .dev.vars.local
+```
+
+macOS/Linux 请先使用 [Ollama 官方下载页](https://ollama.com/download) 的对应安装方式，再运行：
+
+```sh
+npm ci
+cp .dev.vars.local.example .dev.vars.local
 ```
 
 编辑未被 Git 跟踪的 `.dev.vars.local`，至少替换 `APP_PASSWORD` 和 `SESSION_SECRET`。若修改 `CHAT_MODEL`，后续命令中的模型名也要一致。不要把任何密钥写入 `VITE_*`；这些变量会进入浏览器构建。
@@ -22,7 +29,7 @@ Copy-Item .dev.vars.local.example .dev.vars.local
 ollama serve
 ```
 
-在另一个终端安装默认模型，然后检查端点和模型。检查器读取 `.dev.vars.local` 中的 `CHAT_BASE_URL` 与 `CHAT_MODEL`：
+在另一个终端安装默认模型，然后检查端点和模型。检查器明确读取 `.dev.vars.local` 中的 `CHAT_BASE_URL` 与 `CHAT_MODEL`，文件值优先于同名 shell 环境变量，与 Wrangler 启动时使用的配置保持一致：
 
 ```powershell
 ollama pull qwen3:4b
@@ -63,6 +70,12 @@ npm run db:migrate:local
 npm run dev:cloud
 ```
 
+macOS/Linux 的复制命令为：
+
+```sh
+cp .dev.vars.example .dev.vars
+```
+
 `dev:cloud` 与本地模式共用 `.wrangler/state` D1。若不希望两种模式看到同一份本地开发数据，请在切换前自行备份并使用独立工作副本；不要把数据库复制进仓库。
 
 ## 故障排查
@@ -84,5 +97,12 @@ ollama pull qwen3:4b
 ```powershell
 npm run check:local
 ```
+
+其他稳定诊断不会建议错误的 `serve` 或 `pull` 操作：
+
+- `LOCAL_CONFIGURATION_INVALID`：`.dev.vars.local` 缺失、无法解析，或 URL 不是无凭据、无查询/片段的 HTTP(S) 地址。先从示例文件重新复制并检查配置；诊断不会回显原始 URL。
+- `LOCAL_PROVIDER_REJECTED`：服务可访问，但 `/models` 返回 401、500 等 HTTP 错误。检查端点、代理或服务日志。
+- `LOCAL_PROVIDER_INCOMPATIBLE`：服务可访问，但没有返回 OpenAI 兼容的模型列表。确认 `CHAT_BASE_URL` 指向兼容接口的根路径，默认应以 `/v1` 结尾。
+- `LOCAL_PROVIDER_TIMEOUT`：服务已连接但请求或响应体超时。检查本机模型服务负载后重试。
 
 若 D1 数据库表不存在，重新运行 `npm run db:migrate:local`。若修改了 `.dev.vars.local`，停止并重新启动 `npm run dev:local`，Wrangler 才会重新加载变量。
