@@ -1,85 +1,71 @@
 # Luna AI Companion
 
-Luna 是一个本地优先、可自托管、单用户、中文优先的 AI 伴侣网页。Luna 只是默认示例：使用者可以在网页内自由设置名字、头像、关系、称呼、性格、说话风格和相处边界。
+Luna 是一个本地优先、可自托管、单用户、中文优先的 AI 伴侣网页。Luna 只是默认角色；名字、头像、关系、称呼、性格、说话风格和相处边界都可以在设置中修改。
 
-文本聊天默认可通过本机 Ollama 运行，不需要商业聊天 API Key；DeepSeek 云端文本与 MiniMax 云端语音是可选能力。本地模式不会在 Ollama 故障时静默回退到云端。完整设置和隐私边界见 [本地文本模式指南](./docs/LOCAL_MODE.md)。
+## 已实现
 
-## 功能特色
+- 自定义伴侣档案会保存在 D1，并参与每轮上下文；角色始终明确自己是 AI。
+- 文本可选本机 Ollama 或云端 DeepSeek。本地模式失败会明确报错，绝不静默上传到云端；云端覆盖必须显式请求并确认。
+- 长期记忆包含分类、敏感度、置信度、访问与冲突替换元数据。凭据、身份和支付信息不自动保存，健康与亲密信息需要用户确认。
+- 记忆按关键词/分类、待续状态、重要度、时效和使用情况确定性排序；可选本机 embedding，失败时仍有确定性回退。回复只展示真正注入上下文的“本次使用的记忆”。
+- 记忆可查看、编辑、启停、删除、清空，并可导出/恢复严格版本化 JSON 备份。
+- 语音默认使用浏览器系统语音；可选部署者配置的本地 TTS 端点或 MiniMax。MiniMax 不是运行必需项。
+- 支持 SSE 流式回复、停止/重新生成、对话历史、结构化摘要、D1 持久化、用量限制与响应式界面。
 
-### 自定义 AI 伴侣
+详细边界见 [本地模式](./docs/LOCAL_MODE.md)、[云端部署](./docs/CLOUD_MODE.md)和[安全说明](./docs/SECURITY.md)。
 
-- 默认示例名为 Luna，可自由改名。
-- 支持女友、男友、朋友和自定义关系。
-- 支持头像 URL、用户称呼、性格、说话风格与相处边界。
-- 角色档案保存在 D1，并在每轮聊天中参与上下文组装。
-- 保持 AI 身份透明，不编造现实身体、经历或行动。
+## 快速开始：本地 Ollama
 
-### 长期记忆
-
-- 从对话中提取未来仍有价值的稳定记忆。
-- 根据当前话题召回相关记忆，而不是把全部历史塞给模型。
-- 长对话自动生成结构化摘要，保留事件、情绪、回应和待续事项。
-- 记忆可以查看、编辑、启用、停用、删除和全部清空。
-- 自动过滤密码、验证码、证件号、银行卡等不必要敏感信息。
-- 关系状态记录熟悉度、当前情绪和近期事件。
-
-后续阶段会增加记忆分类、冲突更新、召回透明度、敏感内容确认和本地备份恢复。
-
-### 对话与语音
-
-- DeepSeek SSE 流式回复、停止生成和重新生成。
-- 对话历史、消息持久化、复制、朗读和删除。
-- MiniMax 动态音色、试听、语速、音高、音量与自动朗读。
-- 相同文本和语音参数使用浏览器缓存，减少重复费用。
-
-### 安全与质量
-
-- 模型请求只从服务端发起，API Key 不进入浏览器构建。
-- 单用户密码、签名 `HttpOnly; Secure; SameSite=Strict` Cookie 和 D1 会话。
-- 登录、聊天和语音分别限流，并有每日配额。
-- 严格 TypeScript、Zod、Vitest、Miniflare、Playwright 和仓库密钥扫描。
-- 公开仓库不包含聊天数据库、模型权重、音色文件或真实密钥。
-
-## 快速开始
-
-要求 Node.js 24+ 和 Ollama。下面是本地优先路径；完整安装与故障排查见 [docs/LOCAL_MODE.md](./docs/LOCAL_MODE.md)。
+要求 Node.js 24+、Ollama。先在一个终端启动 Ollama，再在项目目录执行：
 
 ```powershell
 npm ci
 Copy-Item .dev.vars.local.example .dev.vars.local
-# 在另一个终端运行：ollama serve
 ollama pull qwen3:4b
 npm run check:local
 npm run db:migrate:local
 npm run dev:local
 ```
 
-先按上方注释在另一个终端运行 `ollama serve`。编辑 `.dev.vars.local`，替换本地登录密码和会话密钥；本地文本不需要 DeepSeek Key：
+编辑不会被 Git 跟踪的 `.dev.vars.local`，至少替换 `APP_PASSWORD`（8 字符以上）与 `SESSION_SECRET`（32 字符以上）。默认聊天配置为：
 
 ```dotenv
 APP_MODE=local
 CHAT_PROVIDER=ollama
 CHAT_BASE_URL=http://127.0.0.1:11434/v1
 CHAT_MODEL=qwen3:4b
-APP_PASSWORD=至少 8 位的本地登录密码
-SESSION_SECRET=至少 32 位随机字符串
-ENVIRONMENT=development
 ```
 
-打开 Wrangler 输出的地址，通常为 [http://127.0.0.1:8788](http://127.0.0.1:8788)，使用 `APP_PASSWORD` 登录。
+打开 Wrangler 输出的地址（通常是 `http://127.0.0.1:8788`），使用 `APP_PASSWORD` 登录。完整安装、macOS/Linux 命令和故障代码见 [docs/LOCAL_MODE.md](./docs/LOCAL_MODE.md)。
 
-`.dev.vars.local` 和 `.wrangler/state` 已被 Git 忽略。对话与记忆保存在本机 `.wrangler/state`。不要把模型密钥放进任何 `VITE_*` 变量，因为 `VITE_*` 会进入浏览器包。
+## 提供方与环境变量
 
-如需 DeepSeek 云端开发，复制 `.dev.vars.example` 为 `.dev.vars`、填写自己的 Key，然后运行 `npm run dev:cloud`。这不会改变本地模式“失败即明确报错”的行为。
+所有凭据都只能放在 Wrangler/Cloudflare 的服务端环境；不要创建任何 `VITE_*` 密钥变量。
+
+| 变量 | 是否必需 | 用途 |
+| --- | --- | --- |
+| `APP_PASSWORD` | 是 | 单用户登录密码，至少 8 字符 |
+| `SESSION_SECRET` | 是 | Cookie 签名密钥，至少 32 字符 |
+| `APP_MODE` | 建议显式设置 | `local` 或 `cloud`；默认 `cloud` |
+| `CHAT_PROVIDER` | 可选 | `ollama` 或 `deepseek`；默认 `deepseek` |
+| `CHAT_BASE_URL` / `CHAT_MODEL` | Ollama 或自定义聊天配置时 | OpenAI 兼容端点与模型 |
+| `CHAT_API_KEY` | 非 DeepSeek 云聊天时按需 | 通用云聊天密钥；也可用下项 |
+| `DEEPSEEK_API_KEY` | DeepSeek 聊天时 | DeepSeek 服务端密钥 |
+| `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | 可选 | 仅接受回环地址的本机 OpenAI 兼容 embedding；两项需同时配置 |
+| `LOCAL_TTS_ENDPOINT` | 可选 | 本地模式仅回环 HTTP(S)；云端模式仅外部 HTTPS 公共 FQDN |
+| `MINIMAX_API_KEY` | 可选 | MiniMax 云语音；浏览器语音不需要 |
+| `ENVIRONMENT` | 可选 | `development`、`test` 或 `production` |
+
+示例见 [`.dev.vars.local.example`](./.dev.vars.local.example) 与 [`.dev.vars.example`](./.dev.vars.example)。云端所需值和信任边界见 [docs/CLOUD_MODE.md](./docs/CLOUD_MODE.md)。
 
 ## 常用命令
 
 ```powershell
 npm run dev             # 仅启动 Vite 前端
 npm run dev:full        # 构建并启动本地 Pages Functions 与 D1
-npm run dev:local       # 检查 Ollama，并以本地文本模式启动
-npm run dev:cloud       # 使用 .dev.vars 的 DeepSeek 云端开发模式
-npm run check:local     # 检查本地端点与配置模型
+npm run dev:local       # 校验 Ollama 后使用 .dev.vars.local 启动
+npm run dev:cloud       # 使用 .dev.vars 启动云聊天开发模式
+npm run check:local
 npm run db:migrate:local
 npm run check:secrets
 npm run typecheck
@@ -89,57 +75,17 @@ npm run build
 npm run test:e2e
 ```
 
-测试不会调用付费 API。真实 API 烟雾测试应使用短消息和短试听句。
-
-## 部署到 Cloudflare Pages
-
-1. 创建 D1：
-
-   ```powershell
-   npx wrangler login
-   npx wrangler d1 create luna-db
-   ```
-
-2. 将返回的 `database_id` 写入 `wrangler.toml`。
-3. 应用远程迁移：
-
-   ```powershell
-   npx wrangler d1 migrations apply luna-db --remote
-   ```
-
-4. 在 Cloudflare Pages 中将构建命令设为 `npm run build`，输出目录设为 `dist`。
-5. 绑定变量名为 `DB` 的 D1 数据库。
-6. 在加密 Secrets 中配置：
-
-   - `DEEPSEEK_API_KEY`
-   - `MINIMAX_API_KEY`
-   - `APP_PASSWORD`
-   - `SESSION_SECRET`
-
-7. 不要创建 `VITE_DEEPSEEK_*` 或 `VITE_MINIMAX_*`。
-
-## API Key 与官方链接
-
-仓库只提供变量名和申请入口，不提供项目所有者的密钥：
-
-- [DeepSeek 开放平台](https://platform.deepseek.com/)
-- [DeepSeek Chat Completion 文档](https://api-docs.deepseek.com/api/create-chat-completion)
-- [MiniMax 开放平台](https://platform.minimaxi.com/)
-- [MiniMax T2A 文档](https://platform.minimaxi.com/docs/api-reference/speech-t2a-http)
-- [MiniMax 音色管理文档](https://platform.minimaxi.com/docs/api-reference/voice-management-get)
-- [Cloudflare D1](https://developers.cloudflare.com/d1/)
-- [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/)
+测试不会调用付费 API。Ollama 模型下载、真实模型质量、真实 MiniMax 与外部 TTS 应另做小流量烟雾测试。
 
 ## 项目结构
 
 - `src/`：React 前端、聊天、伴侣、记忆、语音和用量页面。
 - `functions/api/`：Cloudflare Pages Functions API。
-- `functions/_lib/`：模型客户端、仓储和智能体服务。
-- `shared/`：前后端共享 Schema 与类型。
+- `functions/_lib/`：提供方客户端、仓储与服务。
+- `shared/`：前后端共享 Schema、SSE 与备份格式。
 - `migrations/`：D1 数据库迁移。
 - `config/`：模型、限制与基础人格安全规则。
-- `docs/superpowers/`：已确认设计与实施计划。
 
-## 许可
+## 许可与官方链接
 
-原创代码使用 [MIT License](./LICENSE)。依赖、模型、音色和托管服务保留各自许可证，详见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
+原创代码使用 [MIT License](./LICENSE)，第三方依赖、模型、音色与服务许可见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。服务入口：[DeepSeek](https://platform.deepseek.com/)、[MiniMax](https://platform.minimaxi.com/)、[Ollama](https://ollama.com/)、[Cloudflare D1](https://developers.cloudflare.com/d1/) 和 [Pages Functions](https://developers.cloudflare.com/pages/functions/)。
