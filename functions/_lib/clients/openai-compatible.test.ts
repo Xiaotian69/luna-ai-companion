@@ -55,6 +55,8 @@ describe('OpenAI-compatible chat providers', () => {
   it.each([
     'ftp://127.0.0.1:11434/v1',
     'not a URL',
+    'http://127.0.0.1:11434/v1?',
+    'http://127.0.0.1:11434/v1#',
   ])('rejects invalid provider base URL %s at the runtime resolver', (baseUrl) => {
     expect(() => resolveChatConfig({
       CHAT_PROVIDER: 'ollama',

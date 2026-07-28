@@ -4,7 +4,7 @@ const positiveInt = (fallback: number) => z.coerce.number().int().positive().def
 const httpUrl = z.string().trim().refine((value) => {
   try {
     const url = new URL(value)
-    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !/[?#]/.test(value)
   } catch { return false }
 }, 'Chat base URL must be a valid HTTP or HTTPS URL')
 
