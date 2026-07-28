@@ -32,8 +32,11 @@ describe('MemoryRepository.restore', () => {
       run,
     }
     const db = { prepare: vi.fn((value: string) => { sql = value; return statement }) }
+    const repository = new MemoryRepository(db as unknown as D1Database)
+    const prepareInvariant = vi.spyOn(repository, 'prepareNormalizedInvariant').mockResolvedValue()
 
-    await expect(new MemoryRepository(db as unknown as D1Database).restore(input)).resolves.toBe(expected)
+    await expect(repository.restore(input)).resolves.toBe(expected)
+    expect(prepareInvariant).toHaveBeenCalledOnce()
     expect(sql).toContain('INSERT INTO memories')
     expect(sql).toContain('NOT EXISTS')
     expect(sql).toContain('normalized_content')
@@ -50,8 +53,29 @@ describe('MemoryRepository.restore', () => {
         return { bind: vi.fn(() => ({ run: insert })) }
       }),
     }
+    const repository = new MemoryRepository(db as unknown as D1Database)
+    vi.spyOn(repository, 'prepareNormalizedInvariant').mockResolvedValue()
 
-    await expect(new MemoryRepository(db as unknown as D1Database).restore(input)).resolves.toBe('skipped')
+    await expect(repository.restore(input)).resolves.toBe('skipped')
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('skips an active legacy memory with canonically equivalent content after invariant preparation', async () => {
+    const insert = vi.fn()
+    let prepared = 0
+    const db = {
+      prepare: vi.fn(() => {
+        prepared += 1
+        if (prepared === 1) return { all: vi.fn(async () => ({ results: [{ content: ' 用户喜欢简洁界面。 ' }] })) }
+        return { bind: vi.fn(() => ({ run: insert })) }
+      }),
+    }
+    const repository = new MemoryRepository(db as unknown as D1Database)
+    const prepareInvariant = vi.spyOn(repository, 'prepareNormalizedInvariant').mockResolvedValue()
+
+    await expect(repository.restore(input)).resolves.toBe('skipped')
+    expect(prepareInvariant).toHaveBeenCalledOnce()
+    expect(db.prepare).toHaveBeenCalledWith('SELECT content FROM memories WHERE normalized_content IS NULL')
     expect(insert).not.toHaveBeenCalled()
   })
 })

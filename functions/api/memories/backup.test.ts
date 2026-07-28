@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MAX_MEMORY_BACKUP_BYTES } from '../../../shared/memory-backup'
 
 const repository = vi.hoisted(() => ({
   list: vi.fn(),
@@ -91,6 +92,39 @@ describe('GET /api/memories/export', () => {
     expect(response.status).toBe(413)
     expect(await response.json()).toMatchObject({ error: { code: 'MEMORY_BACKUP_TOO_LARGE' } })
   })
+
+  it('round-trips the largest legal Chinese document through the import envelope', async () => {
+    repository.list.mockResolvedValue(Array.from({ length: 1_000 }, (_, index) => ({
+      ...memory,
+      id: `memory-${index}`,
+      content: `记${'忆'.repeat(499)}`,
+    })))
+    repository.restore.mockResolvedValue('skipped')
+
+    const exported = await onRequestGet({ env: { DB: {} } } as never) as Response
+    const document = await exported.json()
+    const envelope = JSON.stringify({ confirmation: true, backup: document })
+    const envelopeBytes = new TextEncoder().encode(envelope).byteLength
+    const imported = await onRequestPost({ request: post(JSON.parse(envelope)), env: { DB: {} } } as never) as Response
+
+    expect(exported.status).toBe(200)
+    expect(envelopeBytes).toBeGreaterThan(1_048_576)
+    expect(envelopeBytes).toBeLessThanOrEqual(MAX_MEMORY_BACKUP_BYTES)
+    expect(imported.status).toBe(200)
+  })
+
+  it('rejects an export whose actual import envelope exceeds the shared byte limit', async () => {
+    repository.list.mockResolvedValue(Array.from({ length: 1_000 }, (_, index) => ({
+      ...memory,
+      id: `memory-${index}`,
+      content: '\ud800'.repeat(500),
+    })))
+
+    const response = await onRequestGet({ env: { DB: {} } } as never) as Response
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toMatchObject({ error: { code: 'MEMORY_BACKUP_TOO_LARGE' } })
+  })
 })
 
 describe('POST /api/memories/import', () => {
@@ -111,7 +145,7 @@ describe('POST /api/memories/import', () => {
 
   it('rejects an oversized request body before any database write', async () => {
     const response = await onRequestPost({
-      request: post({ confirmation: true, backup: backup(), padding: 'x'.repeat(1_100_000) }),
+      request: post({ confirmation: true, backup: backup(), padding: 'x'.repeat(MAX_MEMORY_BACKUP_BYTES + 1) }),
       env: { DB: {} },
     } as never) as Response
 

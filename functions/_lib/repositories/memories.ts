@@ -106,9 +106,10 @@ export class MemoryRepository {
     validateScore('confidence', input.confidence)
     validateScore('importance', input.importance)
     if (!Number.isInteger(input.accessCount) || input.accessCount < 0) throw new RangeError('accessCount must be a non-negative integer')
+    await this.prepareNormalizedInvariant()
     const normalizedContent = canonicalizeMemoryContent(input.content)
-    const inactiveLegacy = await this.db.prepare('SELECT content FROM memories WHERE is_active = 0 AND normalized_content IS NULL').all<{ content: string }>()
-    if (inactiveLegacy.results.some((memory) => canonicalizeMemoryContent(memory.content) === normalizedContent)) return 'skipped'
+    const legacy = await this.db.prepare('SELECT content FROM memories WHERE normalized_content IS NULL').all<{ content: string }>()
+    if (legacy.results.some((memory) => canonicalizeMemoryContent(memory.content) === normalizedContent)) return 'skipped'
     const result = await this.db.prepare(`INSERT INTO memories (
       id, memory_type, content, importance, category, sensitivity, confidence, access_count,
       last_accessed_at, superseded_memory_id, normalized_content, source_conversation_id,

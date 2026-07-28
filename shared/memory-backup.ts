@@ -3,7 +3,7 @@ import { canonicalizeMemoryContent, memoryCategorySchema, memorySensitivitySchem
 
 export const MEMORY_BACKUP_SCHEMA_VERSION = 1 as const
 export const MAX_MEMORY_BACKUP_ITEMS = 1_000
-export const MAX_MEMORY_BACKUP_BYTES = 1_048_576
+export const MAX_MEMORY_BACKUP_BYTES = 2_097_152
 
 export const memoryBackupItemSchema = z.object({
   memoryType: z.string().trim().min(1).max(40),
@@ -43,4 +43,8 @@ export async function memoryRestoreId(content: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical))
   const hex = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('')
   return `restore-${hex.slice(0, 32)}`
+}
+
+export function memoryBackupImportEnvelopeBytes(backup: MemoryBackup): number {
+  return new TextEncoder().encode(JSON.stringify({ confirmation: true, backup })).byteLength
 }

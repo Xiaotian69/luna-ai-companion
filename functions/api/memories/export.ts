@@ -1,4 +1,4 @@
-import { MAX_MEMORY_BACKUP_ITEMS, MEMORY_BACKUP_SCHEMA_VERSION, memoryBackupSchema } from '../../../shared/memory-backup'
+import { MAX_MEMORY_BACKUP_BYTES, MAX_MEMORY_BACKUP_ITEMS, MEMORY_BACKUP_SCHEMA_VERSION, memoryBackupImportEnvelopeBytes, memoryBackupSchema } from '../../../shared/memory-backup'
 import { apiError, json } from '../../_lib/http'
 import { MemoryRepository } from '../../_lib/repositories/memories'
 import type { LunaPagesFunction } from '../../_lib/types'
@@ -24,6 +24,7 @@ export const onRequestGet: LunaPagesFunction = async ({ env }) => {
       isActive: memory.isActive,
     })),
   })
+  if (memoryBackupImportEnvelopeBytes(backup) > MAX_MEMORY_BACKUP_BYTES) return apiError(413, 'MEMORY_BACKUP_TOO_LARGE', `记忆备份最大支持 ${MAX_MEMORY_BACKUP_BYTES} 字节`)
   const filename = `luna-memories-${now.toISOString().slice(0, 10)}.json`
   return json(backup, { headers: { 'Content-Disposition': `attachment; filename="${filename}"` } })
 }
