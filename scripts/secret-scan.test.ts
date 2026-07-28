@@ -23,9 +23,13 @@ describe('public repository safety scan', () => {
     const publicOpenAiExample = ['sk', 'example1234567890'].join('-')
     const publicAwsExample = ['AKIAIOSFODNN7', 'EXAMPLE'].join('')
     const similarButUnknown = ['sk', 'example1234567891'].join('-')
+    const fixturePrefixAttack = `${publicOpenAiExample}REALSECRET1234567890`
+    const awsSuffixAttack = `${publicAwsExample}X`
 
     expect(containsSecret(`${publicOpenAiExample}\n${publicAwsExample}`)).toBe(false)
     expect(containsSecret(similarButUnknown)).toBe(true)
+    expect(containsSecret(fixturePrefixAttack)).toBe(true)
+    expect(containsSecret(awsSuffixAttack)).toBe(true)
   })
 
   it('rejects local data, model, voice, log, and visual draft paths', () => {

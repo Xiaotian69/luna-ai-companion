@@ -49,7 +49,7 @@ function createDb(memoryRows: Record<string, unknown>[] = []) {
           if (sql.includes('companion_profile')) return companionRow
           return null
         }),
-        all: vi.fn(async () => ({ results: sql.includes('SELECT * FROM memories WHERE is_active = 1 ORDER BY importance DESC') ? memoryRows : [] })),
+        all: vi.fn(async () => ({ results: sql.startsWith('SELECT * FROM memories WHERE is_active = 1 ORDER BY') ? memoryRows : [] })),
       }
       return statement
     }),
@@ -266,6 +266,22 @@ describe('POST /api/chat provider override', () => {
     expect(fetcher).toHaveBeenCalled()
     expect(fetcher.mock.calls.every(([url]) => String(url).startsWith('https://api.deepseek.com/'))).toBe(true)
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('Authorization')).toBe('Bearer cloud-secret')
+  })
+
+  it('does not claim or count memory use when the provider rejects before a stream exists', async () => {
+    const db = createDb([{
+      id: 'memory-1', memory_type: 'preference', content: '用户喜欢旅行', importance: 0.9,
+      category: 'about_user', sensitivity: 'normal', confidence: 0.8, access_count: 0,
+      last_accessed_at: null, superseded_memory_id: null, normalized_content: '用户喜欢旅行',
+      source_conversation_id: null, source_message_id: null, created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-07-01T00:00:00.000Z', is_active: 1,
+    }])
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('unavailable', { status: 503 })))
+
+    const { text } = await chat({ content: '旅行' }, localEnv({ DB: db }))
+
+    expect(text).not.toContain('usedMemories')
+    expect(db.prepare.mock.calls.some(([sql]) => String(sql).includes('SET access_count = access_count + 1'))).toBe(false)
   })
 
   it('emits exactly the bounded memories injected into the model context', async () => {

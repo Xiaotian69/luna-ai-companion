@@ -7,7 +7,7 @@ const keyPatterns = [
   /\b(?:gh[pousr]|github_pat)_[A-Za-z0-9_]{20,}\b/,
   /\b(?:DEEPSEEK_API_KEY|MINIMAX_API_KEY|SESSION_SECRET|APP_PASSWORD)\s*=\s*(?!replace-|your-|example-|<)[^\s#]{12,}/i,
   /-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/,
-  /\bAKIA[A-Z0-9]{16}\b/,
+  /\bAKIA[A-Z0-9]{16,}\b/,
 ]
 
 // Public documentation placeholders used by privacy tests. Keep these fragmented so
@@ -23,7 +23,7 @@ const safeEnvironmentExamples = /^\.(?:env|dev\.vars)(?:\.[a-z0-9_-]+)*\.(?:exam
 const environmentFiles = /^\.(?:env|dev\.vars)(?:\.|$)/i
 
 export function containsSecret(content) {
-  const sanitized = knownPublicFixtures.reduce((value, fixture) => value.replaceAll(fixture, ''), content)
+  const sanitized = content.replace(/\b(?:sk-(?:cp-)?[A-Za-z0-9_-]{16,}|AKIA[A-Z0-9]{16,})\b/g, (token) => knownPublicFixtures.includes(token) ? '' : token)
   return keyPatterns.some((pattern) => pattern.test(sanitized))
 }
 

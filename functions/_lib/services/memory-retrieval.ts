@@ -83,29 +83,35 @@ export function safeMemoryDisplayText(content: string): string {
 export async function retrieveMemories(input: RetrievalInput): Promise<RetrievedMemory[]> {
   const limit = Math.max(0, Math.min(LIMITS.relevantMemoryCount, Math.floor(input.limit ?? LIMITS.relevantMemoryCount)))
   if (!limit) return []
+  const queryTerms = terms(input.query)
   const candidates = input.memories
     .filter((memory) => memory.isActive)
-    .sort((left, right) => right.importance - left.importance || right.updatedAt.localeCompare(left.updatedAt) || right.accessCount - left.accessCount || left.id.localeCompare(right.id))
-    .slice(0, MAX_CANDIDATES)
-  const queryTerms = terms(input.query)
-  let semanticScores = new Map<string, number>()
-  if (input.localEmbedder && candidates.length) {
-    try {
-      const vectors = await input.localEmbedder.embed([input.query, ...candidates.map((memory) => memory.content)])
-      if (vectors.length === candidates.length + 1) semanticScores = new Map(candidates.map((memory, index) => [memory.id, cosine(vectors[0], vectors[index + 1])]))
-    } catch {
-      semanticScores = new Map()
-    }
-  }
-  return candidates
     .map((memory) => ({
       memory,
-      semantic: semanticScores.get(memory.id) ?? 0,
       relevance: keywordRelevance(memory.content, queryTerms),
       category: categoryRelevance(memory, input.query),
       pending: Number(isPending(memory)),
       recent: recency(memory.updatedAt, input.now),
     }))
+    .sort((left, right) => right.relevance - left.relevance
+      || right.category - left.category
+      || right.pending - left.pending
+      || right.memory.importance - left.memory.importance
+      || right.recent - left.recent
+      || right.memory.accessCount - left.memory.accessCount
+      || left.memory.id.localeCompare(right.memory.id))
+    .slice(0, MAX_CANDIDATES)
+  let semanticScores = new Map<string, number>()
+  if (input.localEmbedder && candidates.length) {
+    try {
+      const vectors = await input.localEmbedder.embed([input.query, ...candidates.map(({ memory }) => memory.content)])
+      if (vectors.length === candidates.length + 1) semanticScores = new Map(candidates.map(({ memory }, index) => [memory.id, cosine(vectors[0], vectors[index + 1])]))
+    } catch {
+      semanticScores = new Map()
+    }
+  }
+  return candidates
+    .map((item) => ({ ...item, semantic: semanticScores.get(item.memory.id) ?? 0 }))
     .filter((item) => item.semantic > 0.2 || item.relevance > 0 || item.category > 0 || item.pending > 0)
     .sort((left, right) => right.semantic - left.semantic
       || right.relevance - left.relevance
@@ -124,7 +130,7 @@ export function createLocalMemoryEmbedder(config: { baseUrl?: string; model?: st
   let endpoint: URL
   try {
     const base = new URL(config.baseUrl)
-    if (!['http:', 'https:'].includes(base.protocol) || !['localhost', '127.0.0.1', '::1'].includes(base.hostname) || base.username || base.password || base.search || base.hash) return undefined
+    if (!['http:', 'https:'].includes(base.protocol) || !['localhost', '127.0.0.1', '::1', '[::1]'].includes(base.hostname) || base.username || base.password || base.search || base.hash) return undefined
     endpoint = new URL(`${base.pathname.replace(/\/$/, '')}/embeddings`, base)
   } catch {
     return undefined

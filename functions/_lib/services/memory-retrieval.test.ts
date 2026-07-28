@@ -62,6 +62,17 @@ describe('memory retrieval', () => {
     expect(result[0].displayText.length).toBeLessThanOrEqual(160)
   })
 
+  it('computes fallback relevance before applying the 100-candidate bound', async () => {
+    const memories = [
+      ...Array.from({ length: 100 }, (_, index) => memory(`important-${index}`, { content: `无关内容 ${index}`, importance: 1 })),
+      memory('only-relevant', { content: '唯一的火星旅行线索', importance: 0 }),
+    ]
+
+    const result = await retrieveMemories({ memories, query: '火星旅行', now, limit: 8 })
+
+    expect(result[0]?.id).toBe('only-relevant')
+  })
+
   it('uses an optional local embedder but falls back deterministically when it fails', async () => {
     const memories = [memory('a', { content: '苹果' }), memory('b', { content: '香蕉' })]
     const embed = vi.fn(async (values: string[]) => values.map((value) => value === '香蕉' ? [1, 0] : value === '今天吃什么' ? [1, 0] : [0, 1]))
@@ -91,5 +102,6 @@ describe('memory retrieval', () => {
 
     await expect(embedder?.embed(['query', 'memory'])).resolves.toEqual([[1, 0], [0, 1]])
     expect(String(fetcher.mock.calls[0][0])).toBe('http://127.0.0.1:11434/v1/embeddings')
+    expect(createLocalMemoryEmbedder({ baseUrl: 'http://[::1]:11434/v1', model: 'nomic-embed-text', fetcher })).toBeDefined()
   })
 })

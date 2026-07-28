@@ -33,11 +33,10 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   const messages = new MessageRepository(env.DB)
   const conversation = await new ConversationService(conversations, messages).ensure(input.conversationId, input.content)
   const memoryRepository = new MemoryRepository(env.DB)
-  const [storedHistory, companion, relationship, memories, summary] = await Promise.all([
+  const [storedHistory, companion, relationship, summary] = await Promise.all([
     messages.recent(conversation.id, LIMITS.recentMessageCount),
     new CompanionProfileRepository(env.DB).get(),
     new RelationshipRepository(env.DB).get(),
-    memoryRepository.listForRetrieval(),
     new SummaryRepository(env.DB).get(conversation.id),
   ])
   let effectiveContent = input.content
@@ -56,6 +55,7 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   } else {
     userMessage = await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'user', content: effectiveContent, tokenEstimate: estimateTokens(effectiveContent), now })
   }
+  const memories = await memoryRepository.listForRetrieval(effectiveContent)
   const selectedMemories = await retrieveMemories({
     memories,
     query: effectiveContent,
@@ -63,7 +63,6 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
     localEmbedder: createLocalMemoryEmbedder({ baseUrl: env.EMBEDDING_BASE_URL, model: env.EMBEDDING_MODEL, signal: request.signal }),
   })
   const context = assembleContext({ companion, relationship, memories: selectedMemories, summary: summary?.summary ?? null, messages: history, currentInput: effectiveContent })
-  waitUntil(memoryRepository.markAccessed(selectedMemories.map((memory) => memory.id), now).catch(() => undefined))
   await conversations.touch(conversation.id, now)
   const encoder = new TextEncoder()
   const stream = new TransformStream<Uint8Array, Uint8Array>()
@@ -71,10 +70,11 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   const pump = (async () => {
     let content = ''
     try {
-      const metadata: ChatMetaEventData = { conversationId: conversation.id, userMessageId: userMessage.id, usedMemories: selectedMemories.map(({ id, displayText }) => ({ id, displayText })) }
-      await writer.write(encoder.encode(sseEvent('meta', metadata)))
       const chatProvider = createChatProviderForRequest(env, input)
       const chunks = await chatProvider.stream(context, request.signal)
+      const metadata: ChatMetaEventData = { conversationId: conversation.id, userMessageId: userMessage.id, usedMemories: selectedMemories.map(({ id, displayText }) => ({ id, displayText })) }
+      await writer.write(encoder.encode(sseEvent('meta', metadata)))
+      waitUntil(memoryRepository.markAccessed(selectedMemories.map((memory) => memory.id), now).catch(() => undefined))
       for await (const chunk of chunks) { content += chunk; await writer.write(encoder.encode(sseEvent('delta', { content: chunk }))) }
       const assistant = await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'assistant', content, tokenEstimate: estimateTokens(content), now: new Date().toISOString() })
       await usage.increment(date, { chatCalls: 1, ttsCalls: 0, inputTokens: estimateTokens(effectiveContent), outputTokens: estimateTokens(content) })
