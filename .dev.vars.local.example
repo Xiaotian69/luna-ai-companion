@@ -5,6 +5,10 @@ CHAT_BASE_URL=http://127.0.0.1:11434/v1
 CHAT_MODEL=qwen3:4b
 CHAT_API_KEY=
 
+# Optional local semantic retrieval. Leave both blank to use deterministic keyword/category ranking.
+EMBEDDING_BASE_URL=
+EMBEDDING_MODEL=
+
 # Speech remains optional. Leave this safe placeholder unless you enable cloud speech.
 MINIMAX_API_KEY=replace-with-your-minimax-key
 

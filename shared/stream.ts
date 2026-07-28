@@ -1,4 +1,6 @@
 export interface ModelMessage { role: 'system' | 'user' | 'assistant'; content: string }
+export interface UsedMemoryMetadata { id: string; displayText: string }
+export interface ChatMetaEventData { conversationId: string; userMessageId: string; usedMemories: UsedMemoryMetadata[] }
 
 export async function* parseDeepSeekStream(stream: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const reader = stream.getReader()

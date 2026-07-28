@@ -6,6 +6,8 @@ export interface Bindings {
   CHAT_BASE_URL?: string
   CHAT_MODEL?: string
   CHAT_API_KEY?: string
+  EMBEDDING_BASE_URL?: string
+  EMBEDDING_MODEL?: string
   MINIMAX_API_KEY: string
   APP_PASSWORD: string
   SESSION_SECRET: string

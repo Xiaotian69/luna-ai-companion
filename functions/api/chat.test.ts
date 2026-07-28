@@ -37,7 +37,7 @@ function cloudEnv(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function createDb() {
+function createDb(memoryRows: Record<string, unknown>[] = []) {
   return {
     prepare: vi.fn((sql: string) => {
       const statement = {
@@ -49,7 +49,7 @@ function createDb() {
           if (sql.includes('companion_profile')) return companionRow
           return null
         }),
-        all: vi.fn(async () => ({ results: [] })),
+        all: vi.fn(async () => ({ results: sql.includes('SELECT * FROM memories WHERE is_active = 1 ORDER BY importance DESC') ? memoryRows : [] })),
       }
       return statement
     }),
@@ -266,5 +266,43 @@ describe('POST /api/chat provider override', () => {
     expect(fetcher).toHaveBeenCalled()
     expect(fetcher.mock.calls.every(([url]) => String(url).startsWith('https://api.deepseek.com/'))).toBe(true)
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('Authorization')).toBe('Bearer cloud-secret')
+  })
+
+  it('emits exactly the bounded memories injected into the model context', async () => {
+    const memoryRows = Array.from({ length: 9 }, (_, index) => ({
+      id: `memory-${index}`,
+      memory_type: 'preference',
+      content: `用户喜欢旅行路线 ${index}`,
+      importance: 1 - (index / 10),
+      category: 'about_user',
+      sensitivity: 'normal',
+      confidence: 0.8,
+      access_count: 0,
+      last_accessed_at: null,
+      superseded_memory_id: null,
+      normalized_content: `用户喜欢旅行路线${index}`,
+      source_conversation_id: 'c1',
+      source_message_id: 'source',
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-07-01T00:00:00.000Z',
+      is_active: 1,
+    }))
+    const providerRequests: Array<Array<{ content: string }>> = []
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { messages?: Array<{ content: string }> }
+      if (body.messages) providerRequests.push(body.messages)
+      return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetcher)
+
+    const { text } = await chat({ content: '旅行路线' }, localEnv({ DB: createDb(memoryRows) }))
+    const metaLine = text.split('\n').find((line) => line.startsWith('data:') && line.includes('usedMemories'))
+    const meta = JSON.parse(metaLine?.slice(5).trim() ?? '{}') as { usedMemories: Array<{ id: string; displayText: string }> }
+    const contextText = providerRequests.find((messages) => messages.some((message) => message.content.includes('用户喜欢旅行路线 0')))?.map((message) => message.content).join('\n') ?? ''
+
+    expect(meta.usedMemories).toHaveLength(8)
+    expect(meta.usedMemories.map((memory) => memory.id)).toEqual(Array.from({ length: 8 }, (_, index) => `memory-${index}`))
+    for (const memory of meta.usedMemories) expect(contextText).toContain(memory.displayText)
+    expect(contextText).not.toContain('用户喜欢旅行路线 8')
   })
 })

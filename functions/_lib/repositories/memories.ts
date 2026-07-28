@@ -86,7 +86,9 @@ export class MemoryRepository {
   }
   async create(input: MemoryCreateInput): Promise<void> { await this.prepareNormalizedInvariant(); await this.insert(input).run() }
   async list(activeOnly = false): Promise<Memory[]> { const sql = activeOnly ? 'SELECT * FROM memories WHERE is_active = 1 ORDER BY importance DESC, updated_at DESC' : 'SELECT * FROM memories ORDER BY importance DESC, updated_at DESC'; return (await this.db.prepare(sql).all<MemoryRow>()).results.map(map) }
+  async listForRetrieval(requestedLimit = 100): Promise<Memory[]> { const limit = Math.max(1, Math.min(100, Math.floor(requestedLimit))); return (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 ORDER BY importance DESC, updated_at DESC, access_count DESC, id ASC LIMIT ?').bind(limit).all<MemoryRow>()).results.map(map) }
   async listCandidates(category: MemoryCategory, memoryType: string, requestedLimit = 100): Promise<Memory[]> { const limit = Math.max(1, Math.min(100, Math.floor(requestedLimit))); return (await this.db.prepare('SELECT * FROM memories WHERE is_active = 1 AND category = ? AND memory_type = ? ORDER BY importance DESC, updated_at DESC LIMIT ?').bind(category, memoryType, limit).all<MemoryRow>()).results.map(map) }
+  async markAccessed(ids: string[], now: string): Promise<void> { const selected = [...new Set(ids)].slice(0, 100); if (!selected.length) return; await this.db.prepare('UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE is_active = 1 AND id IN (SELECT value FROM json_each(?))').bind(now, JSON.stringify(selected)).run() }
   async get(id: string): Promise<Memory | null> { const row = await this.db.prepare('SELECT * FROM memories WHERE id = ?').bind(id).first<MemoryRow>(); return row ? map(row) : null }
   async reinforce(id: string, input: { confidence: number; importance: number; normalizedContent?: string; now: string }): Promise<boolean> {
     validateScore('confidence', input.confidence)

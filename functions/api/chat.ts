@@ -1,6 +1,6 @@
 import { LIMITS } from '../../config/limits'
 import { chatRequestSchema } from '../../shared/chat'
-import { sseEvent } from '../../shared/stream'
+import { sseEvent, type ChatMetaEventData } from '../../shared/stream'
 import { createChatProviderForRequest } from '../_lib/clients/chat-provider'
 import { apiError, readJson } from '../_lib/http'
 import { ConversationRepository } from '../_lib/repositories/conversations'
@@ -15,6 +15,7 @@ import { ConversationService } from '../_lib/services/conversations'
 import { assembleContext, estimateTokens } from '../_lib/services/context'
 import { UsageGuard } from '../_lib/services/guard'
 import { MemoryExtractionService } from '../_lib/services/memory-extraction'
+import { createLocalMemoryEmbedder, retrieveMemories } from '../_lib/services/memory-retrieval'
 import { SummarizationService } from '../_lib/services/summarization'
 import type { LunaPagesFunction } from '../_lib/types'
 
@@ -31,11 +32,12 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   const conversations = new ConversationRepository(env.DB)
   const messages = new MessageRepository(env.DB)
   const conversation = await new ConversationService(conversations, messages).ensure(input.conversationId, input.content)
+  const memoryRepository = new MemoryRepository(env.DB)
   const [storedHistory, companion, relationship, memories, summary] = await Promise.all([
     messages.recent(conversation.id, LIMITS.recentMessageCount),
     new CompanionProfileRepository(env.DB).get(),
     new RelationshipRepository(env.DB).get(),
-    new MemoryRepository(env.DB).list(true),
+    memoryRepository.listForRetrieval(),
     new SummaryRepository(env.DB).get(conversation.id),
   ])
   let effectiveContent = input.content
@@ -54,7 +56,14 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   } else {
     userMessage = await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'user', content: effectiveContent, tokenEstimate: estimateTokens(effectiveContent), now })
   }
-  const context = assembleContext({ companion, relationship, memories, summary: summary?.summary ?? null, messages: history, currentInput: effectiveContent })
+  const selectedMemories = await retrieveMemories({
+    memories,
+    query: effectiveContent,
+    now,
+    localEmbedder: createLocalMemoryEmbedder({ baseUrl: env.EMBEDDING_BASE_URL, model: env.EMBEDDING_MODEL, signal: request.signal }),
+  })
+  const context = assembleContext({ companion, relationship, memories: selectedMemories, summary: summary?.summary ?? null, messages: history, currentInput: effectiveContent })
+  waitUntil(memoryRepository.markAccessed(selectedMemories.map((memory) => memory.id), now).catch(() => undefined))
   await conversations.touch(conversation.id, now)
   const encoder = new TextEncoder()
   const stream = new TransformStream<Uint8Array, Uint8Array>()
@@ -62,7 +71,8 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
   const pump = (async () => {
     let content = ''
     try {
-      await writer.write(encoder.encode(sseEvent('meta', { conversationId: conversation.id, userMessageId: userMessage.id })))
+      const metadata: ChatMetaEventData = { conversationId: conversation.id, userMessageId: userMessage.id, usedMemories: selectedMemories.map(({ id, displayText }) => ({ id, displayText })) }
+      await writer.write(encoder.encode(sseEvent('meta', metadata)))
       const chatProvider = createChatProviderForRequest(env, input)
       const chunks = await chatProvider.stream(context, request.signal)
       for await (const chunk of chunks) { content += chunk; await writer.write(encoder.encode(sseEvent('delta', { content: chunk }))) }
@@ -70,7 +80,7 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
       await usage.increment(date, { chatCalls: 1, ttsCalls: 0, inputTokens: estimateTokens(effectiveContent), outputTokens: estimateTokens(content) })
       waitUntil(Promise.allSettled([
         new SummarizationService(chatProvider, messages, new SummaryRepository(env.DB)).run(conversation.id),
-        new MemoryExtractionService(chatProvider, new MemoryRepository(env.DB)).extract({ conversationId: conversation.id, sourceMessageId: userMessage.id, userContent: effectiveContent, assistantContent: content }),
+        new MemoryExtractionService(chatProvider, memoryRepository).extract({ conversationId: conversation.id, sourceMessageId: userMessage.id, userContent: effectiveContent, assistantContent: content }),
       ]).then(() => undefined))
       await writer.write(encoder.encode(sseEvent('done', { messageId: assistant.id })))
     } catch (error) {
