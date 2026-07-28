@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ttsRequestSchema } from '../../shared/speech'
 import { AudioController, loadVoiceSettings, voiceCacheKey } from './audioController'
 
 describe('voice cache keys', () => {
@@ -144,6 +145,23 @@ describe('service speech ownership', () => {
     await expect(pending).resolves.toBeUndefined()
     expect(audioInstances).toHaveLength(0)
     expect(cachePut).not.toHaveBeenCalled()
+  })
+
+  it('sends only the strict TTS request settings', async () => {
+    let requestBody: unknown
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body))
+      return new Response(new Uint8Array([1]), { headers: { 'Content-Type': 'audio/mpeg' } })
+    }))
+    const controller = new AudioController()
+
+    await controller.play('strict body', { ...serviceSettings, autoRead: true })
+
+    expect(requestBody).toEqual({
+      text: 'strict body', provider: 'local', voiceId: 'default', speed: 1, pitch: 0, volume: 1,
+    })
+    expect(() => ttsRequestSchema.parse(requestBody)).not.toThrow()
+    expect(requestBody).not.toHaveProperty('autoRead')
   })
 
   it('cancels a pending service response when switching to browser speech', async () => {

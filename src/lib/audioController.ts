@@ -13,6 +13,16 @@ function throwIfAborted(signal: AbortSignal) {
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
 }
 
+function sanitizeTtsSettings(settings: VoiceSettings): TtsSettings {
+  return {
+    provider: settings.provider,
+    voiceId: settings.voiceId,
+    speed: settings.speed,
+    pitch: settings.pitch,
+    volume: settings.volume,
+  }
+}
+
 export async function voiceCacheKey(text: string, settings: TtsSettings): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify({ text, ...settings }))
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
@@ -86,6 +96,7 @@ export class AudioController {
     const generation = this.generation
     const requestController = new AbortController()
     this.requestController = requestController
+    const requestSettings = sanitizeTtsSettings(settings)
 
     if (settings.provider === 'browser') {
       const synthesizer = globalThis.speechSynthesis
@@ -96,10 +107,10 @@ export class AudioController {
       const speak = () => {
         if (generation !== this.generation) return
         const utterance = new SpeechSynthesisUtterance(text)
-        utterance.voice = synthesizer.getVoices().find((voice) => voice.voiceURI === settings.voiceId) ?? null
-        utterance.rate = settings.speed
-        utterance.pitch = Math.max(0, Math.min(2, 1 + settings.pitch / 12))
-        utterance.volume = Math.max(0, Math.min(1, settings.volume))
+        utterance.voice = synthesizer.getVoices().find((voice) => voice.voiceURI === requestSettings.voiceId) ?? null
+        utterance.rate = requestSettings.speed
+        utterance.pitch = Math.max(0, Math.min(2, 1 + requestSettings.pitch / 12))
+        utterance.volume = Math.max(0, Math.min(1, requestSettings.volume))
         synthesizer.speak(utterance)
       }
       this.browserReplay = speak
@@ -109,7 +120,7 @@ export class AudioController {
     }
 
     try {
-      const blob = await speechBlob(text, settings, requestController.signal)
+      const blob = await speechBlob(text, requestSettings, requestController.signal)
       if (requestController.signal.aborted || generation !== this.generation) return
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
