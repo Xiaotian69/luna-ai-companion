@@ -15,15 +15,33 @@ let db: D1Database
 beforeAll(async () => {
   mf = new Miniflare({ modules: true, script: 'export default { fetch(){ return new Response("ok") } }', d1Databases: { DB: 'luna-test' } })
   db = await mf.getD1Database('DB')
-  const migration = await readFile(join(process.cwd(), 'migrations/0001_initial.sql'), 'utf8')
-  for (const statement of migration.split(';').map((part) => part.trim()).filter(Boolean)) {
-    await db.prepare(statement).run()
+  for (const file of ['0001_initial.sql', '0002_companion_profile.sql', '0003_memory_metadata.sql']) {
+    if (file === '0003_memory_metadata.sql') {
+      await db.prepare("INSERT INTO memories (id, memory_type, content, importance, source_conversation_id, source_message_id, created_at, updated_at, is_active) VALUES ('legacy-memory', 'preference', '迁移前的记忆', 0.7, NULL, NULL, '2026-07-15T10:30:00Z', '2026-07-15T10:30:00Z', 1)").run()
+    }
+    const migration = await readFile(join(process.cwd(), 'migrations', file), 'utf8')
+    for (const statement of migration.split(';').map((part) => part.trim()).filter(Boolean)) {
+      await db.prepare(statement).run()
+    }
   }
 })
 
 afterAll(() => mf.dispose())
 
 describe('D1 repositories', () => {
+  it('preserves pre-migration memories with safe metadata defaults', async () => {
+    const memories = new MemoryRepository(db)
+    expect(await memories.get('legacy-memory')).toMatchObject({
+      category: 'about_user',
+      sensitivity: 'normal',
+      confidence: 0.5,
+      accessCount: 0,
+      lastAccessedAt: null,
+      supersededMemoryId: null,
+    })
+    await memories.delete('legacy-memory')
+  })
+
   it('persists ordered messages and cascades conversation deletion', async () => {
     const conversations = new ConversationRepository(db)
     const messages = new MessageRepository(db)
@@ -48,6 +66,69 @@ describe('D1 repositories', () => {
     expect(await memories.list()).toMatchObject([{ content: '用户喜欢简洁安静的界面', isActive: false }])
     await memories.clear()
     expect(await memories.list()).toEqual([])
+  })
+
+  it('persists memory metadata and uses safe defaults for existing callers', async () => {
+    const memories = new MemoryRepository(db)
+    await memories.create({ id: 'metadata-defaults', memoryType: 'preference', content: '用户喜欢散步', importance: 0.6, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:05:00Z' })
+    await memories.create({
+      id: 'metadata-explicit',
+      memoryType: 'commitment',
+      content: '一起完成年度计划',
+      importance: 0.9,
+      category: 'commitment',
+      sensitivity: 'personal',
+      confidence: 0.85,
+      accessCount: 3,
+      lastAccessedAt: '2026-07-15T11:06:00Z',
+      supersededMemoryId: null,
+      sourceConversationId: null,
+      sourceMessageId: null,
+      now: '2026-07-15T11:06:00Z',
+    })
+
+    expect(await memories.list()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'metadata-defaults', category: 'about_user', sensitivity: 'normal', confidence: 0.5, accessCount: 0, lastAccessedAt: null, supersededMemoryId: null }),
+      expect.objectContaining({ id: 'metadata-explicit', category: 'commitment', sensitivity: 'personal', confidence: 0.85, accessCount: 3, lastAccessedAt: '2026-07-15T11:06:00Z' }),
+    ]))
+  })
+
+  it('rejects a fractional access count at the database boundary', async () => {
+    const memories = new MemoryRepository(db)
+    await expect(memories.create({ id: 'fractional-access', memoryType: 'preference', content: '无效访问次数', importance: 0.6, accessCount: 1.5, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:06:30Z' })).rejects.toThrow()
+  })
+
+  it('reinforces duplicates with bounded nondecreasing confidence and stronger importance', async () => {
+    const memories = new MemoryRepository(db)
+    await memories.create({ id: 'reinforced', memoryType: 'preference', content: '用户喜欢爵士乐', importance: 0.6, confidence: 0.5, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:07:00Z' })
+    await memories.reinforce('reinforced', { confidence: 0.8, importance: 0.4, now: '2026-07-15T11:08:00Z' })
+    await memories.reinforce('reinforced', { confidence: 1, importance: 0.9, now: '2026-07-15T11:09:00Z' })
+
+    const reinforced = (await memories.list()).find((item) => item.id === 'reinforced')
+    expect(reinforced).toMatchObject({ confidence: 1, importance: 0.9 })
+  })
+
+  it('atomically replaces a conflict and keeps only the new fact active with a trace', async () => {
+    const memories = new MemoryRepository(db)
+    await memories.create({ id: 'old-theme', memoryType: 'preference', content: '用户喜欢浅色主题', importance: 0.7, category: 'about_user', sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:10:00Z' })
+    const old = (await memories.list()).find((item) => item.id === 'old-theme')!
+    await memories.replace(old, { id: 'new-theme', memoryType: 'preference', content: '用户喜欢深色主题', importance: 0.8, category: 'about_user', sensitivity: 'normal', confidence: 0.9, supersededMemoryId: old.id, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:11:00Z' })
+
+    const themes = (await memories.list()).filter((item) => item.id === 'old-theme' || item.id === 'new-theme')
+    expect(themes.filter((item) => item.isActive)).toEqual([expect.objectContaining({ id: 'new-theme', supersededMemoryId: 'old-theme' })])
+    expect(themes.find((item) => item.id === 'old-theme')).toMatchObject({ isActive: false })
+  })
+
+  it('allows only one active replacement when conflict updates race', async () => {
+    const memories = new MemoryRepository(db)
+    await memories.create({ id: 'old-layout', memoryType: 'preference', content: '用户喜欢紧凑布局', importance: 0.7, category: 'about_user', sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:12:00Z' })
+    const old = (await memories.get('old-layout'))!
+    const replacement = (id: string, content: string) => memories.replace(old, { id, memoryType: 'preference', content, importance: 0.8, category: 'about_user', sensitivity: 'normal', confidence: 0.9, supersededMemoryId: old.id, sourceConversationId: null, sourceMessageId: null, now: '2026-07-15T11:13:00Z' })
+
+    await Promise.all([replacement('new-layout-a', '用户喜欢宽松布局'), replacement('new-layout-b', '用户喜欢舒展布局')])
+
+    const replacements = (await memories.list()).filter((item) => item.supersededMemoryId === old.id)
+    expect(replacements.filter((item) => item.isActive)).toHaveLength(1)
   })
 
   it('expires sessions and increments daily usage', async () => {
