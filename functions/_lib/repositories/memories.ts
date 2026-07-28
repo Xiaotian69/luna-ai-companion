@@ -20,6 +20,23 @@ export interface MemoryCreateInput {
   now: string
 }
 
+export interface MemoryRestoreInput {
+  id: string
+  memoryType: string
+  content: string
+  importance: number
+  category: MemoryCategory
+  sensitivity: MemorySensitivity
+  confidence: number
+  accessCount: number
+  lastAccessedAt: string | null
+  sourceConversationId: null
+  sourceMessageId: null
+  createdAt: string
+  updatedAt: string
+  isActive: boolean
+}
+
 function withDefaults(input: MemoryCreateInput) {
   return {
     ...input,
@@ -85,6 +102,31 @@ export class MemoryRepository {
     return this.db.prepare(`INSERT INTO memories (id, memory_type, content, importance, category, sensitivity, confidence, access_count, last_accessed_at, superseded_memory_id, normalized_content, source_conversation_id, source_message_id, created_at, updated_at, is_active) ${values}`).bind(value.id, value.memoryType, value.content, value.importance, value.category, value.sensitivity, value.confidence, value.accessCount, value.lastAccessedAt, value.supersededMemoryId, value.normalizedContent, value.sourceConversationId, value.sourceMessageId, value.now, value.now)
   }
   async create(input: MemoryCreateInput): Promise<void> { await this.prepareNormalizedInvariant(); await this.insert(input).run() }
+  async restore(input: MemoryRestoreInput): Promise<'created' | 'skipped'> {
+    validateScore('confidence', input.confidence)
+    validateScore('importance', input.importance)
+    if (!Number.isInteger(input.accessCount) || input.accessCount < 0) throw new RangeError('accessCount must be a non-negative integer')
+    const normalizedContent = canonicalizeMemoryContent(input.content)
+    const inactiveLegacy = await this.db.prepare('SELECT content FROM memories WHERE is_active = 0 AND normalized_content IS NULL').all<{ content: string }>()
+    if (inactiveLegacy.results.some((memory) => canonicalizeMemoryContent(memory.content) === normalizedContent)) return 'skipped'
+    const result = await this.db.prepare(`INSERT INTO memories (
+      id, memory_type, content, importance, category, sensitivity, confidence, access_count,
+      last_accessed_at, superseded_memory_id, normalized_content, source_conversation_id,
+      source_message_id, created_at, updated_at, is_active
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?, ?
+    WHERE NOT EXISTS (
+      SELECT 1 FROM memories
+      WHERE id = ? OR normalized_content = ? OR (normalized_content IS NULL AND content = ?)
+    )
+    ON CONFLICT DO NOTHING`).bind(
+      input.id, input.memoryType, input.content, input.importance, input.category, input.sensitivity,
+      input.confidence, input.accessCount, input.lastAccessedAt, normalizedContent,
+      input.createdAt, input.updatedAt, input.isActive ? 1 : 0,
+      input.id, normalizedContent, input.content,
+    ).run()
+    return (result.meta.changes ?? 0) > 0 ? 'created' : 'skipped'
+  }
   async list(activeOnly = false): Promise<Memory[]> { const sql = activeOnly ? 'SELECT * FROM memories WHERE is_active = 1 ORDER BY importance DESC, updated_at DESC' : 'SELECT * FROM memories ORDER BY importance DESC, updated_at DESC'; return (await this.db.prepare(sql).all<MemoryRow>()).results.map(map) }
   async listForRetrieval(query: string, requestedLimit = 100): Promise<Memory[]> {
     const limit = Math.max(1, Math.min(100, Math.floor(requestedLimit)))
