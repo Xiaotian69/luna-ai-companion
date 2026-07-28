@@ -1,7 +1,7 @@
 import { LIMITS } from '../../config/limits'
 import { chatRequestSchema } from '../../shared/chat'
 import { sseEvent } from '../../shared/stream'
-import { DeepSeekClient } from '../_lib/clients/deepseek'
+import { createChatProvider } from '../_lib/clients/chat-provider'
 import { apiError, readJson } from '../_lib/http'
 import { ConversationRepository } from '../_lib/repositories/conversations'
 import { CompanionProfileRepository } from '../_lib/repositories/companion-profile'
@@ -63,11 +63,12 @@ export const onRequestPost: LunaPagesFunction = async ({ request, env, waitUntil
     let content = ''
     try {
       await writer.write(encoder.encode(sseEvent('meta', { conversationId: conversation.id, userMessageId: userMessage.id })))
-      const chunks = await new DeepSeekClient(env.DEEPSEEK_API_KEY).stream(context, request.signal)
+      const chatProvider = createChatProvider(env)
+      const chunks = await chatProvider.stream(context, request.signal)
       for await (const chunk of chunks) { content += chunk; await writer.write(encoder.encode(sseEvent('delta', { content: chunk }))) }
       const assistant = await messages.create({ id: crypto.randomUUID(), conversationId: conversation.id, role: 'assistant', content, tokenEstimate: estimateTokens(content), now: new Date().toISOString() })
       await usage.increment(date, { chatCalls: 1, ttsCalls: 0, inputTokens: estimateTokens(effectiveContent), outputTokens: estimateTokens(content) })
-      const backgroundClient = new DeepSeekClient(env.DEEPSEEK_API_KEY)
+      const backgroundClient = createChatProvider(env)
       waitUntil(Promise.allSettled([
         new SummarizationService(backgroundClient, messages, new SummaryRepository(env.DB)).run(conversation.id),
         new MemoryExtractionService(backgroundClient, new MemoryRepository(env.DB)).extract({ conversationId: conversation.id, sourceMessageId: userMessage.id, userContent: effectiveContent, assistantContent: content }),

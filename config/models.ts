@@ -18,3 +18,16 @@ export const MODELS = {
     emotion: 'calm',
   },
 } as const
+
+export const CHAT_PROVIDER_DEFAULTS = {
+  deepseek: {
+    baseUrl: MODELS.chat.baseUrl,
+    model: MODELS.chat.model,
+    requiresApiKey: true,
+  },
+  ollama: {
+    baseUrl: 'http://127.0.0.1:11434/v1',
+    model: 'qwen3:4b',
+    requiresApiKey: false,
+  },
+} as const
