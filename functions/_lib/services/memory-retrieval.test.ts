@@ -142,6 +142,7 @@ describe('memory retrieval candidate repository', () => {
     expect(statements[1].bindings.at(-1)).toBe(100)
     expect(statements[2].sql).toContain("category = 'commitment'")
     expect(statements[2].sql).toContain("lower(memory_type) LIKE '%pending%'")
+    expect(statements[2].sql).toContain("lower(memory_type) LIKE '%commitment%'")
     expect(statements[2].bindings).toEqual([100])
   })
 
