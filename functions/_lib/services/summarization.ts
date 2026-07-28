@@ -1,6 +1,6 @@
 import { LIMITS } from '../../../config/limits'
 import { z } from 'zod'
-import type { DeepSeekClient } from '../clients/deepseek'
+import type { ChatProvider } from '../clients/chat-provider'
 import { MessageRepository } from '../repositories/messages'
 import { SummaryRepository } from '../repositories/summaries'
 import type { Message } from '../repositories/types'
@@ -15,7 +15,7 @@ export function selectCompressionBatch<T extends { id: string; tokenEstimate: nu
 export function renderSummary(value: z.infer<typeof schema>): string { const section = (title: string, items: string[]) => `### ${title}\n${items.length ? items.map((item) => `- ${item}`).join('\n') : '- 无'}`; return [section('发生的事', value.events), section('用户想法与情绪', value.user_thoughts_and_emotions), section('AI 伴侣已有回应', value.companion_responses), section('尚未解决', value.unresolved), section('后续必须记住', value.must_remember), section('不应反复提起', value.avoid_repeating)].join('\n\n') }
 
 export class SummarizationService {
-  constructor(private readonly client: DeepSeekClient, private readonly messages: MessageRepository, private readonly summaries: SummaryRepository) {}
+  constructor(private readonly client: Pick<ChatProvider, 'complete'>, private readonly messages: MessageRepository, private readonly summaries: SummaryRepository) {}
   async run(conversationId: string): Promise<void> {
     const [messages, current] = await Promise.all([this.messages.list(conversationId), this.summaries.get(conversationId)])
     const batch = selectCompressionBatch(messages, current?.coveredUntilMessageId ?? null, LIMITS.recentMessageCount, LIMITS.compressionTokenThreshold)

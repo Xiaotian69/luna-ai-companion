@@ -1,5 +1,5 @@
 import { memoryCandidateSchema } from '../../../shared/memory'
-import type { DeepSeekClient } from '../clients/deepseek'
+import type { ChatProvider } from '../clients/chat-provider'
 import { MemoryRepository } from '../repositories/memories'
 
 const sensitive = /身份证|护照|银行卡|密码|验证码|\b1\d{10}\b|\b\d{16,19}\b/i
@@ -18,7 +18,7 @@ export function parseMemoryCandidate(value: string) {
 }
 
 export class MemoryExtractionService {
-  constructor(private readonly client: DeepSeekClient, private readonly memories: MemoryRepository) {}
+  constructor(private readonly client: Pick<ChatProvider, 'complete'>, private readonly memories: MemoryRepository) {}
   async extract(input: { conversationId: string; sourceMessageId: string; userContent: string; assistantContent: string }): Promise<void> {
     const raw = await this.client.complete([{ role: 'system', content: '判断用户本轮是否包含稳定且未来有价值的长期记忆。不要猜测，不保存临时琐事或不必要敏感信息。只输出 JSON：{"should_save":boolean,"memory_type":string,"content":string,"importance":0到1}。' }, { role: 'user', content: formatMemoryExtractionTranscript(input.userContent, input.assistantContent) }])
     const candidate = parseMemoryCandidate(raw)

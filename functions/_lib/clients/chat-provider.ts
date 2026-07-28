@@ -1,4 +1,5 @@
 import { CHAT_PROVIDER_DEFAULTS, MODELS } from '../../../config/models'
+import { parseChatProviderEnv } from '../../../shared/env'
 import type { ModelMessage } from '../../../shared/stream'
 import { OpenAICompatibleClient } from './openai-compatible'
 
@@ -37,17 +38,18 @@ function optionalValue(value: string | undefined): string | undefined {
 }
 
 export function resolveChatConfig(env: ChatProviderEnv): ChatConfig {
-  const provider = env.CHAT_PROVIDER?.trim() || 'deepseek'
-  if (!(provider in CHAT_PROVIDER_DEFAULTS)) throw new Error('CHAT_PROVIDER_UNSUPPORTED')
+  const requestedProvider = env.CHAT_PROVIDER?.trim() || 'deepseek'
+  if (!Object.hasOwn(CHAT_PROVIDER_DEFAULTS, requestedProvider)) throw new Error('CHAT_PROVIDER_UNSUPPORTED')
+  const parsed = parseChatProviderEnv(env)
+  const provider = parsed.CHAT_PROVIDER ?? 'deepseek'
   const name = provider as ChatProviderName
   const defaults = CHAT_PROVIDER_DEFAULTS[name]
-  const apiKey = optionalValue(env.CHAT_API_KEY) ?? (name === 'deepseek' ? optionalValue(env.DEEPSEEK_API_KEY) : undefined)
-  if (defaults.requiresApiKey && !apiKey) throw new Error('CHAT_API_KEY_REQUIRED')
+  const apiKey = optionalValue(parsed.CHAT_API_KEY) ?? (name === 'deepseek' ? parsed.DEEPSEEK_API_KEY : undefined)
   return {
     provider: name,
-    baseUrl: optionalValue(env.CHAT_BASE_URL)?.replace(/\/+$/, '') ?? defaults.baseUrl,
+    baseUrl: parsed.CHAT_BASE_URL?.replace(/\/+$/, '') ?? defaults.baseUrl,
     endpoint: MODELS.chat.endpoint,
-    model: optionalValue(env.CHAT_MODEL) ?? defaults.model,
+    model: parsed.CHAT_MODEL ?? defaults.model,
     apiKey,
     requiresApiKey: defaults.requiresApiKey,
     temperature: MODELS.chat.temperature,
@@ -57,6 +59,6 @@ export function resolveChatConfig(env: ChatProviderEnv): ChatConfig {
   }
 }
 
-export function createChatProvider(env: ChatProviderEnv, fetcher: typeof fetch = globalThis.fetch): OpenAICompatibleClient {
+export function createChatProvider(env: ChatProviderEnv, fetcher: typeof fetch = globalThis.fetch): ChatProvider {
   return new OpenAICompatibleClient(resolveChatConfig(env), fetcher)
 }
