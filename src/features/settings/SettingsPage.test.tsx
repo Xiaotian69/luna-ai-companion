@@ -55,4 +55,19 @@ describe('speech provider settings', () => {
     await waitFor(() => expect(play).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ provider: 'browser' })))
     play.mockRestore()
   })
+
+  it('stops playback and clears provider state when restoring defaults', async () => {
+    mockedApi.mockResolvedValue({ provider: 'minimax', configured: false, voices: [] })
+    const stop = vi.spyOn(lunaAudio, 'stop')
+    render(<SettingsPage />)
+    fireEvent.change(screen.getByLabelText('语音提供方'), { target: { value: 'minimax' } })
+    expect(await screen.findByText('MiniMax 语音尚未配置。')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复默认' }))
+
+    expect(screen.getByLabelText('语音提供方')).toHaveValue('browser')
+    await waitFor(() => expect(screen.queryByText('MiniMax 语音尚未配置。')).not.toBeInTheDocument())
+    expect(stop).toHaveBeenCalled()
+    stop.mockRestore()
+  })
 })

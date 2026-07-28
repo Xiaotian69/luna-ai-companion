@@ -54,6 +54,14 @@ describe('GET /api/voices', () => {
     const response = await getVoices({ request: new Request('https://example.test/api/voices?provider=other'), env: {} } as never) as Response
     expect(response.status).toBe(400)
   })
+
+  it('rejects client-supplied voice endpoint query fields', async () => {
+    const response = await getVoices({
+      request: new Request('https://example.test/api/voices?provider=local&endpoint=https://attacker.example.com/tts'),
+      env: { APP_MODE: 'local', LOCAL_TTS_ENDPOINT: 'http://localhost:8000/tts' },
+    } as never) as Response
+    expect(response.status).toBe(400)
+  })
 })
 
 describe('POST /api/tts', () => {
@@ -185,5 +193,16 @@ describe('POST /api/tts', () => {
   it('strictly rejects a browser request because it never belongs on the server', async () => {
     const response = await tts({ provider: 'browser', text: 'hello', voiceId: 'default', speed: 1, pitch: 0, volume: 1 }, {})
     expect(response.status).toBe(400)
+  })
+
+  it('rejects client-supplied endpoint fields instead of treating them as configuration', async () => {
+    const fetcher = vi.fn()
+    vi.stubGlobal('fetch', fetcher)
+    const response = await tts({
+      provider: 'local', text: 'hello', voiceId: 'default', speed: 1, pitch: 0, volume: 1,
+      endpoint: 'https://attacker.example.com/tts',
+    }, { LOCAL_TTS_ENDPOINT: 'http://localhost:8000/tts' })
+    expect(response.status).toBe(400)
+    expect(fetcher).not.toHaveBeenCalled()
   })
 })

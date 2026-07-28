@@ -55,6 +55,13 @@ export function SettingsPage() {
     setSettings((current) => ({ ...current, provider, voiceId: 'default' }))
   }
 
+  const restoreDefaults = () => {
+    lunaAudio.stop()
+    setError('')
+    setVoices([])
+    setSettings(DEFAULT_VOICE_SETTINGS)
+  }
+
   const range = (key: 'speed' | 'pitch' | 'volume', label: string, min: number, max: number, step: number) => <label className="range-row">
     <span>{label}<b>{settings[key]}</b></span>
     <input type="range" min={min} max={max} step={step} value={settings[key]} onChange={(event) => setSettings((value) => ({ ...value, [key]: Number(event.target.value) }))} />
@@ -88,7 +95,7 @@ export function SettingsPage() {
       {range('pitch', '音高', -12, 12, 1)}
       {range('volume', '音量', .1, 2, .1)}
       <label className="switch-row"><span>自动朗读<small>浏览器语音不会调用云端；本地与 MiniMax 按所选提供方生成。</small></span><input type="checkbox" checked={settings.autoRead} onChange={(event) => setSettings((value) => ({ ...value, autoRead: event.target.checked }))} /></label>
-      <div className="row-actions"><button onClick={() => void preview()}><Volume2 size={16} />试听</button><button onClick={() => setSettings(DEFAULT_VOICE_SETTINGS)}><RotateCcw size={16} />恢复默认</button></div>
+      <div className="row-actions"><button onClick={() => void preview()}><Volume2 size={16} />试听</button><button onClick={restoreDefaults}><RotateCcw size={16} />恢复默认</button></div>
     </div>
   </section>
 }

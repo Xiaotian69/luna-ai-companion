@@ -22,6 +22,9 @@ function isPublicFqdn(hostname: string): boolean {
 }
 
 export function isSafeLocalTtsEndpoint(value: string, mode: 'cloud' | 'local' = 'local'): boolean {
+  // This value is deployment-only configuration, never request or saved UI data.
+  // Public-FQDN syntax and redirect blocking prevent common mistakes; they do not
+  // attempt DNS authorization. Anyone who controls deployment env already controls code execution.
   try {
     const url = new URL(value)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return false

@@ -5,7 +5,9 @@ import { rankVoices } from '../_lib/services/speech'
 import type { LunaPagesFunction } from '../_lib/types'
 
 export const onRequestGet: LunaPagesFunction = async ({ request, env }) => {
-  const parsed = speechProviderSchema.safeParse(new URL(request.url).searchParams.get('provider') ?? 'browser')
+  const searchParams = new URL(request.url).searchParams
+  if ([...searchParams.keys()].some((key) => key !== 'provider')) return apiError(400, 'INVALID_REQUEST', '语音参数无效')
+  const parsed = speechProviderSchema.safeParse(searchParams.get('provider') ?? 'browser')
   if (!parsed.success) return apiError(400, 'INVALID_SPEECH_PROVIDER', '语音提供方无效')
 
   if (parsed.data === 'browser') return json({ provider: 'browser', configured: true, voices: [] })
