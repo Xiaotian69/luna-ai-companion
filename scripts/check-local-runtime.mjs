@@ -17,10 +17,13 @@ function loadEnvironment(args) {
     : index >= 0 ? args[index + 1] : undefined
   if ((equalsArgument !== undefined || index >= 0) && !path) throw new Error('ENV_FILE_ARGUMENT_MISSING')
   if (!path) return process.env
-  return { ...process.env, ...parseEnv(readFileSync(path, 'utf8')) }
+  return parseEnv(readFileSync(path, 'utf8'))
 }
 
 function configuration(env) {
+  if (env.APP_MODE !== 'local' || env.CHAT_PROVIDER !== 'ollama') {
+    throw new Error('LOCAL_MODE_MARKERS_INVALID')
+  }
   const rawBaseUrl = env.CHAT_BASE_URL?.trim() || DEFAULT_BASE_URL
   const model = env.CHAT_MODEL?.trim() || DEFAULT_MODEL
   if (/[?#]/.test(rawBaseUrl)) throw new Error('CHAT_BASE_URL_INVALID')
@@ -64,6 +67,8 @@ async function main() {
   try {
     const response = await fetch(`${config.baseUrl}/models`, { signal: controller.signal })
     if (!response.ok) {
+      controller.abort()
+      await response.body?.cancel().catch(() => {})
       console.log(`LOCAL_PROVIDER_REJECTED: local provider returned HTTP ${response.status}.`)
       process.exitCode = 4
       return

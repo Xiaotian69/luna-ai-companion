@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type RequestListener, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -56,10 +56,14 @@ async function closedLoopbackUrl() {
 }
 
 function envFile(values: Record<string, string>) {
+  return envFileContent(Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n'))
+}
+
+function envFileContent(content: string) {
   const directory = mkdtempSync(join(tmpdir(), 'companion-local-runtime-'))
   temporaryDirectories.push(directory)
   const path = join(directory, '.dev.vars.local')
-  writeFileSync(path, Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n'))
+  writeFileSync(path, content)
   return path
 }
 
@@ -68,22 +72,32 @@ async function check(options: {
   model?: string
   args?: string[]
   env?: NodeJS.ProcessEnv
+  timeout?: number
 } = {}) {
+  const startedAt = Date.now()
   try {
     const result = await execFileAsync(process.execPath, ['scripts/check-local-runtime.mjs', '--', ...(options.args ?? [])], {
       cwd: process.cwd(),
       env: {
         ...process.env,
+        APP_MODE: 'local',
+        CHAT_PROVIDER: 'ollama',
         CHAT_BASE_URL: options.baseUrl,
         CHAT_MODEL: options.model ?? 'qwen3:4b',
         ...options.env,
       },
-      timeout: 8_000,
+      timeout: options.timeout ?? 8_000,
     })
-    return { code: 0, stdout: result.stdout, stderr: result.stderr }
+    return { code: 0, stdout: result.stdout, stderr: result.stderr, signal: null, duration: Date.now() - startedAt }
   } catch (error) {
-    const failed = error as Error & { code?: number; stdout?: string; stderr?: string }
-    return { code: failed.code ?? 1, stdout: failed.stdout ?? '', stderr: failed.stderr ?? '' }
+    const failed = error as Error & { code?: number; stdout?: string; stderr?: string; signal?: string }
+    return {
+      code: failed.code ?? 1,
+      stdout: failed.stdout ?? '',
+      stderr: failed.stderr ?? '',
+      signal: failed.signal ?? null,
+      duration: Date.now() - startedAt,
+    }
   }
 }
 
@@ -135,7 +149,12 @@ describe('local runtime checker CLI', () => {
 
   it('loads file values after inherited values so the preflight matches Wrangler', async () => {
     const baseUrl = await modelServer(['file-model'])
-    const path = envFile({ CHAT_BASE_URL: baseUrl, CHAT_MODEL: 'file-model' })
+    const path = envFile({
+      APP_MODE: 'local',
+      CHAT_PROVIDER: 'ollama',
+      CHAT_BASE_URL: baseUrl,
+      CHAT_MODEL: 'file-model',
+    })
 
     const result = await check({
       baseUrl: 'http://127.0.0.1:9/v1',
@@ -147,6 +166,69 @@ describe('local runtime checker CLI', () => {
     expect(result.stdout).toContain('LOCAL_RUNTIME_READY')
     expect(result.stdout).toContain('file-model')
     expect(result.stdout).not.toContain('inherited-model')
+  })
+
+  it('does not inherit required settings into an explicitly empty environment file', async () => {
+    const result = await check({
+      baseUrl: await modelServer(['qwen3:4b']),
+      args: ['--env-file', envFile({})],
+    })
+
+    expect(result.code).not.toBe(0)
+    expect(result.stdout).toContain('LOCAL_CONFIGURATION_INVALID')
+    expect(result.stdout).not.toContain('LOCAL_RUNTIME_READY')
+    expectNoRepairCommand(result)
+  })
+
+  it('does not fill a partial environment file from conflicting inherited settings', async () => {
+    const baseUrl = await modelServer(['qwen3:4b'])
+    const result = await check({
+      baseUrl,
+      args: ['--env-file', envFile({ APP_MODE: 'local', CHAT_BASE_URL: baseUrl, CHAT_MODEL: 'qwen3:4b' })],
+      env: { CHAT_PROVIDER: 'ollama' },
+    })
+
+    expect(result.code).not.toBe(0)
+    expect(result.stdout).toContain('LOCAL_CONFIGURATION_INVALID')
+    expect(result.stdout).not.toContain('LOCAL_RUNTIME_READY')
+    expectNoRepairCommand(result)
+  })
+
+  it.each([
+    ['APP_MODE', 'cloud'],
+    ['CHAT_PROVIDER', 'deepseek'],
+  ])('requires the local env file to declare the expected %s marker', async (key, value) => {
+    const baseUrl = await modelServer(['qwen3:4b'])
+    const result = await check({
+      args: ['--env-file', envFile({
+        APP_MODE: key === 'APP_MODE' ? value : 'local',
+        CHAT_PROVIDER: key === 'CHAT_PROVIDER' ? value : 'ollama',
+        CHAT_BASE_URL: baseUrl,
+        CHAT_MODEL: 'qwen3:4b',
+      })],
+    })
+
+    expect(result.code).not.toBe(0)
+    expect(result.stdout).toContain('LOCAL_CONFIGURATION_INVALID')
+    expectNoRepairCommand(result)
+  })
+
+  it('accepts the complete local example when pointed at a compatible provider', async () => {
+    const baseUrl = await modelServer(['qwen3:4b'])
+    const example = readFileSync('.dev.vars.local.example', 'utf8')
+      .replace(/^CHAT_BASE_URL=.*$/m, `CHAT_BASE_URL=${baseUrl}`)
+    const result = await check({
+      args: ['--env-file', envFileContent(example)],
+      env: {
+        APP_MODE: 'cloud',
+        CHAT_PROVIDER: 'deepseek',
+        CHAT_BASE_URL: 'http://127.0.0.1:9/v1',
+        CHAT_MODEL: 'inherited-model',
+      },
+    })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('LOCAL_RUNTIME_READY')
   })
 
   it('reports a missing requested environment file as invalid configuration', async () => {
@@ -176,6 +258,22 @@ describe('local runtime checker CLI', () => {
     expect(result.stdout).toContain('LOCAL_PROVIDER_REJECTED')
     expect(result.stdout).toContain(String(status))
     expectNoRepairCommand(result)
+  })
+
+  it('cancels a stalled HTTP error body and exits promptly', async () => {
+    const baseUrl = await listen((_request, response) => {
+      response.writeHead(500, { 'content-type': 'application/json' })
+      response.flushHeaders()
+      response.write('{"error":"still streaming')
+    })
+
+    const result = await check({ baseUrl, timeout: 2_000 })
+
+    expect(result.stdout).toContain('LOCAL_PROVIDER_REJECTED')
+    expect(result.stdout).toContain('500')
+    expectNoRepairCommand(result)
+    expect(result.signal).toBeNull()
+    expect(result.duration).toBeLessThan(1_500)
   })
 
   it.each([
