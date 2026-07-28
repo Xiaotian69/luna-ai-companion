@@ -29,6 +29,7 @@ describe('OpenAI-compatible chat providers', () => {
   })
 
   it('requires an API key for the default cloud provider', () => {
+    expect(() => resolveChatConfig({})).toThrow('CHAT_API_KEY_MISSING')
     expect(() => parseEnv({
       MINIMAX_API_KEY: 'minimax-test',
       APP_PASSWORD: 'strong-password',

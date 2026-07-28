@@ -32,6 +32,11 @@ export interface ChatProvider {
   complete(messages: ModelMessage[], signal?: AbortSignal): Promise<string>
 }
 
+export interface ChatProviderOverride {
+  providerOverride?: 'cloud'
+  confirmCloudOverride?: boolean
+}
+
 function optionalValue(value: string | undefined): string | undefined {
   const trimmed = value?.trim()
   return trimmed || undefined
@@ -40,6 +45,7 @@ function optionalValue(value: string | undefined): string | undefined {
 export function resolveChatConfig(env: ChatProviderEnv): ChatConfig {
   const requestedProvider = env.CHAT_PROVIDER?.trim() || 'deepseek'
   if (!Object.hasOwn(CHAT_PROVIDER_DEFAULTS, requestedProvider)) throw new Error('CHAT_PROVIDER_UNSUPPORTED')
+  if (requestedProvider !== 'ollama' && !optionalValue(env.CHAT_API_KEY) && !optionalValue(env.DEEPSEEK_API_KEY)) throw new Error('CHAT_API_KEY_MISSING')
   const parsed = parseChatProviderEnv(env)
   const provider = parsed.CHAT_PROVIDER ?? 'deepseek'
   const name = provider as ChatProviderName
@@ -61,4 +67,18 @@ export function resolveChatConfig(env: ChatProviderEnv): ChatConfig {
 
 export function createChatProvider(env: ChatProviderEnv, fetcher: typeof fetch = globalThis.fetch): ChatProvider {
   return new OpenAICompatibleClient(resolveChatConfig(env), fetcher)
+}
+
+export function createChatProviderForRequest(env: ChatProviderEnv, override: ChatProviderOverride, fetcher: typeof fetch = globalThis.fetch): ChatProvider {
+  if (override.providerOverride === 'cloud' && override.confirmCloudOverride === true) {
+    return createChatProvider({
+      ...env,
+      APP_MODE: 'cloud',
+      CHAT_PROVIDER: 'deepseek',
+      CHAT_BASE_URL: undefined,
+      CHAT_MODEL: undefined,
+      CHAT_API_KEY: undefined,
+    }, fetcher)
+  }
+  return createChatProvider(env, fetcher)
 }

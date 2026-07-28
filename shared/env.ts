@@ -2,7 +2,10 @@ import { z } from 'zod'
 
 const positiveInt = (fallback: number) => z.coerce.number().int().positive().default(fallback)
 const httpUrl = z.string().trim().refine((value) => {
-  try { return ['http:', 'https:'].includes(new URL(value).protocol) } catch { return false }
+  try {
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash
+  } catch { return false }
 }, 'Chat base URL must be a valid HTTP or HTTPS URL')
 
 export const chatProviderEnvSchema = z.object({
