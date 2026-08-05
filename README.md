@@ -1,52 +1,115 @@
 # Luna
 
-Luna 是一个单用户中文 AI 陪伴聊天网页。它使用 React + Vite + TypeScript、Cloudflare Pages Functions 与 D1，文字模型为 DeepSeek `deepseek-v4-flash`，语音模型为 MiniMax `speech-2.8-turbo`。
+![Luna — She remembers what matters](docs/assets/hero.png)
 
-## 已实现
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-- DeepSeek SSE 流式聊天、停止与重新生成
-- 新建/查看历史对话、复制与删除消息、刷新后持久化
-- D1 上下文摘要、长期记忆提取和记忆管理
-- MiniMax 动态系统音色、试听、参数设置、自动朗读和浏览器音频缓存
-- 单用户密码、签名 HttpOnly/Secure/SameSite Cookie、D1 会话、请求限流和每日配额
-- B 方案极简图标栏、历史抽屉、深浅主题、移动端安全区
-- 严格 TypeScript、Zod 输入校验、Vitest/Miniflare、Playwright 和密钥扫描
+[![CI](https://github.com/Xiaotian69/luna-ai-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/Xiaotian69/luna-ai-companion/actions/workflows/ci.yml)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![Cloudflare](https://img.shields.io/badge/Cloudflare-Pages%20%2B%20D1-F38020?logo=cloudflare&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-a56e76.svg)](LICENSE)
 
-## 本地开发
+Luna is a self-hostable, single-user Chinese AI companion. It combines streaming conversation, inspectable long-term memory, and configurable voice in a focused web interface built for one private space.
 
-需要 Node.js 24+。安装依赖：
+## A companion with memory—and boundaries
+
+Luna remembers useful context without turning memory into a black box. Conversations, summaries, and extracted long-term memories live in your D1 database; the memory screen lets you edit, disable, delete, or clear what was saved.
+
+Her persona is explicit about being AI. The system prompt avoids invented human experiences, emotional dependency, exclusivity, and manipulative reassurance. This is still a cloud-backed application: chat content is processed by DeepSeek, and text is sent to MiniMax when voice generation is requested.
+
+## Highlights
+
+- **Conversation that flows:** DeepSeek responses arrive over SSE, with stop, regenerate, copy, delete, persistent history, and multiple conversations.
+- **Transparent memory:** D1 stores conversation summaries and selected long-term memories; active memories are ranked into relevant context and remain user-manageable.
+- **Natural voice, under your control:** MiniMax system voices, speed, pitch, volume, manual playback, optional auto-read, and browser-side audio caching.
+- **Single-user access:** Password login, HMAC-signed secure cookies, hashed D1 session identifiers, and server-only provider credentials.
+- **Cost guardrails:** Per-minute chat/TTS limits, daily call and estimated-token caps, plus a visible daily usage page.
+- **Responsive by default:** Light and dark themes, a compact desktop rail, mobile bottom navigation, and safe-area-aware layout.
+
+## Screenshots
+
+| Streaming chat | Transparent memory |
+| --- | --- |
+| ![Luna streaming chat with a synthetic running conversation](docs/assets/screenshots/chat.png) | ![Luna memory management with a synthetic preference](docs/assets/screenshots/memory.png) |
+
+| Persona and voice | Mobile chat |
+| --- | --- |
+| ![Luna persona and MiniMax voice settings](docs/assets/screenshots/voice-settings.png) | ![Luna responsive mobile chat](docs/assets/screenshots/mobile-chat.png) |
+
+All screenshots come from the local Cloudflare Pages stack with synthetic D1 data. No paid chat or TTS request was made during capture.
+
+## How it works
+
+```mermaid
+flowchart LR
+    B["Browser<br/>React + TypeScript"] --> F["Cloudflare Pages Functions"]
+    F --> DS["DeepSeek<br/>SSE chat"]
+    F --> MM["MiniMax<br/>voice"]
+    F --> D1["Cloudflare D1<br/>conversations · summaries · memories · sessions · usage"]
+```
+
+The browser talks only to same-origin Pages Functions. Functions assemble persona, relationship state, relevant memories, summary, and recent messages before calling DeepSeek; completed responses are persisted and can trigger summary or memory extraction. MiniMax voice is requested separately and cached in the browser by text and voice settings.
+
+## Quick start
+
+Requirements: Node.js 24+ and a Cloudflare account for Wrangler/D1.
 
 ```bash
-npm install
+git clone https://github.com/Xiaotian69/luna-ai-companion.git
+cd luna-ai-companion
+npm ci
 ```
 
-复制 `.dev.vars.example` 为 `.dev.vars`，设置：
-
-```dotenv
-DEEPSEEK_API_KEY=你的 DeepSeek Key
-MINIMAX_API_KEY=你的 MiniMax Key
-APP_PASSWORD=至少 8 位的本地登录密码
-SESSION_SECRET=至少 32 位随机字符串
-ENVIRONMENT=development
-```
-
-`.dev.vars`、`.env`、私钥文件均已被 `.gitignore` 排除。不要把真实值复制到 `VITE_*` 变量：任何 `VITE_*` 值都会进入浏览器包。
-
-创建本地 D1 并迁移：
+Copy `.dev.vars.example` to `.dev.vars`, replace every placeholder, then initialize the local D1 database and start the complete Pages stack:
 
 ```bash
 npm run db:migrate:local
-```
-
-构建并同时启动 Pages 静态资源与 Functions：
-
-```bash
 npm run dev:full
 ```
 
-打开 Wrangler 输出的地址（通常为 `http://localhost:8788`），使用 `.dev.vars` 中的 `APP_PASSWORD` 登录。单独运行 `npm run dev` 只启动前端；此时 API 会代理到 `http://localhost:8788`。
+Open the Wrangler URL (normally `http://localhost:8788`) and sign in with `APP_PASSWORD`. `npm run dev` starts only Vite and expects a Pages Functions server at `http://localhost:8788` for API proxying.
 
-## 质量检查
+### Deploy to Cloudflare Pages
+
+1. Create the production database with `npx wrangler d1 create luna-db` and copy its `database_id` into `wrangler.toml`.
+2. Apply migrations with `npx wrangler d1 migrations apply luna-db --remote`.
+3. Create a Pages project connected to this repository. Use `npm run build` as the build command and `dist` as the output directory.
+4. Bind the D1 database as `DB` and add `DEEPSEEK_API_KEY`, `MINIMAX_API_KEY`, `APP_PASSWORD`, and `SESSION_SECRET` as encrypted Pages secrets.
+5. Deploy through the Pages Git integration. GitHub Actions validates the repository; it does not deploy or require provider keys.
+
+## Configuration
+
+| Variable / binding | Purpose |
+| --- | --- |
+| `DEEPSEEK_API_KEY` | Server-side DeepSeek credential |
+| `MINIMAX_API_KEY` | Server-side MiniMax credential |
+| `APP_PASSWORD` | Single-user login password; minimum 8 characters |
+| `SESSION_SECRET` | HMAC signing secret; minimum 32 characters |
+| `ENVIRONMENT` | `development`, `test`, or `production`; defaults to `development` |
+| `DB` | Cloudflare D1 binding named exactly `DB` |
+
+Behavior is intentionally centralized:
+
+- `config/models.ts` — DeepSeek and MiniMax endpoints, model names, and generation defaults
+- `config/limits.ts` — context thresholds, input limits, request rates, and daily quotas
+- `config/persona.ts` — Luna's complete editable persona and relationship boundaries
+- `migrations/0001_initial.sql` — D1 schema for conversations, messages, summaries, memories, relationship state, sessions, usage, and rate limits
+
+The current configured defaults are DeepSeek `deepseek-v4-flash` and MiniMax `speech-2.8-turbo`.
+
+## Security and cost controls
+
+- Provider keys stay in Pages Functions. Never put them in `VITE_*` variables, which are bundled for the browser.
+- Session cookies are `HttpOnly`, `Secure`, and `SameSite=Strict`; cookies are HMAC-signed, while only SHA-256 session identifiers are stored in D1.
+- Default controls allow 12 chat requests/minute and 20 TTS requests/minute, with daily caps of 100 chat calls, 100 TTS calls, and 500,000 estimated chat tokens. Adjust them in `config/limits.ts` before deployment if needed.
+- Auto-read is off by default. Identical text chunks with the same voice settings reuse the browser Cache API instead of generating audio again.
+- DeepSeek receives chat context, and MiniMax receives text only when speech is requested. Review both providers' data policies for your deployment.
+- Export D1 regularly, back up before high-risk changes, and rotate a provider key immediately if it was ever exposed.
+
+## Quality checks
+
+The CI workflow runs the same no-paid-API quality gate used locally:
 
 ```bash
 npm run check:secrets
@@ -54,58 +117,14 @@ npm run typecheck
 npm run lint
 npm run test:run
 npm run build
-npm run test:e2e
 ```
 
-测试不会调用付费 API。真实 API 烟雾测试应只使用短消息和短试听句，避免意外费用。
+Run `npm run test:e2e` for the mocked desktop/mobile Playwright checks. Automated tests do not call paid model APIs.
 
-## 创建 Cloudflare D1
+## Roadmap
 
-登录 Wrangler 后创建数据库：
+- **In development:** a local-first, hybrid provider architecture with configurable local and OpenAI-compatible endpoints. The supported implementation today remains Cloudflare Pages + D1 with DeepSeek chat and MiniMax voice.
 
-```bash
-npx wrangler login
-npx wrangler d1 create luna-db
-```
+## License
 
-把返回的 `database_id` 写入 `wrangler.toml`，然后执行生产迁移：
-
-```bash
-npx wrangler d1 migrations apply luna-db --remote
-```
-
-数据库包含 `conversations`、`messages`、`conversation_summaries`、`memories`、`relationship_state`、`sessions`、`usage_daily` 和 `rate_limits`。建议定期用 Wrangler 导出 D1，并在高风险变更前备份。
-
-## 部署到 Cloudflare Pages
-
-1. 在 Cloudflare Dashboard 创建 Pages 项目并连接 GitHub 仓库。
-2. 构建命令设置为 `npm run build`，输出目录设置为 `dist`。
-3. 为 Pages 项目绑定 D1，变量名必须是 `DB`，数据库选择 `luna-db`。
-4. 在 Pages 的 Settings → Variables and Secrets 中添加四个加密 Secret：`DEEPSEEK_API_KEY`、`MINIMAX_API_KEY`、`APP_PASSWORD`、`SESSION_SECRET`。
-5. 不要创建任何 `VITE_DEEPSEEK_*` 或 `VITE_MINIMAX_*` 变量。
-6. 首次部署前执行远程 D1 迁移；随后推送 `main` 即由 Pages Git 集成自动部署。
-
-GitHub Actions 只运行静态检查、测试与构建，不需要也不应配置模型 Key。Cloudflare Pages Git 集成负责线上部署。
-
-## 配置位置
-
-- `config/models.ts`：模型、API 地址与主要参数
-- `config/limits.ts`：上下文阈值、输入限制、速率与每日配额
-- `config/persona.ts`：Luna 的完整可编辑人物设定
-- `migrations/0001_initial.sql`：D1 初始迁移
-
-## 安全与费用
-
-- 所有模型请求仅由 Pages Functions 发起；浏览器包不包含 API Key。
-- Cookie 设置 `HttpOnly; Secure; SameSite=Strict`，会话只以 SHA-256 哈希写入 D1。
-- 登录、聊天和 TTS 分别限流；聊天和语音有每日调用上限。
-- 自动朗读关闭时不会自动请求 TTS；相同文本与参数使用浏览器 Cache API。
-- 若 Key 曾粘贴到公开位置或提交历史，应立即在 DeepSeek/MiniMax 控制台轮换，而不只是删除文件。
-
-## 官方接口参考
-
-- [DeepSeek Chat Completion](https://api-docs.deepseek.com/api/create-chat-completion)
-- [MiniMax 中国区 T2A HTTP](https://platform.minimaxi.com/docs/api-reference/speech-t2a-http)
-- [MiniMax 中国区 Get Voice](https://platform.minimaxi.com/docs/api-reference/voice-management-get)
-- [Cloudflare D1](https://developers.cloudflare.com/d1/)
-- [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/)
+Released under the [MIT License](LICENSE). Copyright © 2026 Xiaotian69.
