@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Luna social preview</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+    body {
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #f3f3f7;
+      background:
+        radial-gradient(circle at 78% 4%, rgba(165, 110, 118, .34), transparent 30%),
+        radial-gradient(circle at 18% 104%, rgba(111, 115, 155, .35), transparent 35%),
+        #171921;
+    }
+    .canvas { position: relative; width: 100%; height: 100%; padding: 62px 68px; overflow: hidden; }
+    .topline { position: relative; z-index: 2; display: flex; align-items: center; gap: 13px; color: #b8bce2; font-size: 21px; font-weight: 750; letter-spacing: .16em; }
+    .moon { position: relative; width: 36px; height: 36px; border-radius: 50%; background: #f3f3f7; }
+    .moon::after { content: ""; position: absolute; width: 33px; height: 33px; left: 11px; top: -4px; border-radius: 50%; background: #171921; }
+    h1 { position: relative; z-index: 2; width: 900px; margin: 56px 0 26px; font-family: Georgia, "Times New Roman", serif; font-size: 63px; line-height: 1.02; letter-spacing: -.032em; font-weight: 500; }
+    .capabilities { position: relative; z-index: 2; margin: 0; color: rgba(243, 243, 247, .75); font-size: 20px; }
+    .arc { position: absolute; width: 520px; height: 520px; right: -88px; top: -110px; border: 1px solid rgba(243, 243, 247, .12); border-radius: 50%; }
+    .arc::before, .arc::after { content: ""; position: absolute; border-radius: 50%; }
+    .arc::before { width: 11px; height: 11px; left: 52px; bottom: 96px; background: #a56e76; box-shadow: 0 0 20px rgba(165, 110, 118, .9); }
+    .arc::after { width: 3px; height: 3px; left: 155px; bottom: 42px; background: #f3f3f7; box-shadow: 118px -150px #f3f3f7, 248px -83px #f3f3f7, 286px 78px #f3f3f7; opacity: .55; }
+    .shot { position: absolute; z-index: 1; width: 490px; height: 294px; right: 55px; bottom: -68px; overflow: hidden; border: 1px solid rgba(243, 243, 247, .16); border-radius: 24px; background: #171921; box-shadow: 0 28px 65px rgba(5, 6, 10, .5); transform: rotate(-3deg); }
+    .shot img { display: block; width: 490px; height: auto; }
+    .rule { position: absolute; left: 68px; bottom: 63px; width: 230px; height: 3px; border-radius: 9px; background: linear-gradient(90deg, #6f739b, #a56e76); }
+  </style>
+</head>
+<body>
+  <main class="canvas">
+    <div class="topline"><span class="moon"></span><span>LUNA · AI COMPANION</span></div>
+    <h1>A private AI companion that remembers what matters.</h1>
+    <p class="capabilities">Streaming chat · Transparent memory · Natural voice · Self-hostable</p>
+    <div class="arc"></div>
+    <div class="shot"><img src="./screenshots/chat.png" alt="Luna chat interface"></div>
+    <div class="rule"></div>
+  </main>
+</body>
+</html>
